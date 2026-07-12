@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { User, Calendar, Tag, ChevronRight, Loader2, BookOpen } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Calendar, Tag, Loader2, BookOpen } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 // Inisialisasi Supabase Client
@@ -27,6 +27,12 @@ export default function KaryaTulisPage() {
   const [loading, setLoading] = useState(true);
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
+  // State dan Ref untuk fitur Drag to Scroll
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [isDown, setIsDown] = useState(false);
+  const [startY, setStartY] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+
   useEffect(() => {
     const fetchKarya = async () => {
       setLoading(true);
@@ -41,7 +47,6 @@ export default function KaryaTulisPage() {
         const list = data || [];
         setKaryaList(list);
         
-        // Otomatis pilih karya terbaru di paling atas
         if (list.length > 0) {
           setSelectedKarya(list[0]);
         }
@@ -59,57 +64,86 @@ export default function KaryaTulisPage() {
     setBrokenImages((prev) => ({ ...prev, [id]: true }));
   };
 
+  // Handler Drag to Scroll
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!scrollRef.current) return;
+    setIsDown(true);
+    setStartY(e.pageY - scrollRef.current.offsetTop);
+    setScrollTop(scrollRef.current.scrollTop);
+  };
+
+  const handleMouseLeaveOrUp = () => {
+    setIsDown(false);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDown || !scrollRef.current) return;
+    e.preventDefault();
+    const y = e.pageY - scrollRef.current.offsetTop;
+    const walk = (y - startY) * 1.5; // Kecepatan scroll
+    scrollRef.current.scrollTop = scrollTop - walk;
+  };
+
   return (
-    /* Mengunci tinggi layar penuh dan mematikan scrollbar global */
     <div className="bg-slate-50 h-screen w-full text-slate-800 overflow-hidden p-4 md:p-6 flex items-center justify-center">
       
-      {/* LOADING STATE UTAMA */}
       {loading ? (
         <div className="w-full h-full flex justify-center items-center">
           <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
         </div>
       ) : karyaList.length > 0 ? (
         
-        /* MASTER-DETAIL LAYOUT SCREENSPLIT */
         <div className="w-full h-full flex flex-col-reverse lg:flex-row overflow-hidden gap-6">
           
-          {/* ================= SISI KIRI: HALAMAN DETAIL (SCROLLABLE TINGGI PENUH) ================= */}
-          <div className="w-full lg:w-[40%] xl:w-[35%] h-[50%] lg:h-full bg-white border border-slate-200/60 rounded-3xl p-6 flex flex-col justify-between shadow-xs overflow-hidden">
+          {/* ================= SISI KIRI: HALAMAN DETAIL (FULL SCROLLABLE & DRAG TO SCROLL) ================= */}
+          <div className="w-full lg:w-[40%] xl:w-[35%] h-[50%] lg:h-full bg-white border border-slate-200/60 rounded-3xl p-6 shadow-xs overflow-hidden">
             {selectedKarya ? (
-              <div className="flex flex-col h-full overflow-hidden">
-                {/* Header Detail */}
-                <div className="border-b border-slate-100 pb-4 mb-4 shrink-0 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-black tracking-wider uppercase">
-                      <Tag className="w-2.5 h-2.5" /> {selectedKarya.kategori}
-                    </span>
-                    <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                      <Calendar className="w-3 h-3 text-slate-300" />
-                      {new Date(selectedKarya.dibuat_pada).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </span>
+              <div 
+                ref={scrollRef}
+                onMouseDown={handleMouseDown}
+                onMouseLeave={handleMouseLeaveOrUp}
+                onMouseUp={handleMouseLeaveOrUp}
+                onMouseMove={handleMouseMove}
+                className={`h-full overflow-y-auto pr-1 custom-scrollbar select-none space-y-4 ${
+                  isDown ? 'cursor-grabbing' : 'cursor-grab'
+                }`}
+              >
+                {/* Gambar Sampul (Ditempatkan di paling atas sebelum komponen lainnya) */}
+                {selectedKarya.foto_url && !brokenImages[selectedKarya.id] && (
+                  <img 
+                    src={selectedKarya.foto_url} 
+                    alt={selectedKarya.judul} 
+                    draggable="false"
+                    className="w-full h-auto rounded-2xl object-cover border border-slate-100 shadow-2xs pointer-events-none"
+                  />
+                )}
+
+                {/* Meta data: Kategori & Tanggal */}
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-black tracking-wider uppercase">
+                    <Tag className="w-2.5 h-2.5" /> {selectedKarya.kategori}
+                  </span>
+                  <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                    <Calendar className="w-3 h-3 text-slate-300" />
+                    {new Date(selectedKarya.dibuat_pada).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+                
+                {/* Judul Utama */}
+                <h2 className="text-sm md:text-base font-black text-slate-900 uppercase tracking-tight leading-snug">
+                  {selectedKarya.judul}
+                </h2>
+                
+                {/* Info Penulis */}
+                <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wide flex items-center gap-1.5 border-b border-slate-100 pb-4">
+                  <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-500 text-[9px]">
+                    {(selectedKarya.penulis || 'A').charAt(0).toUpperCase()}
                   </div>
-                  
-                  <h2 className="text-sm md:text-base font-black text-slate-900 uppercase tracking-tight leading-snug">
-                    {selectedKarya.judul}
-                  </h2>
-                  
-                  <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wide flex items-center gap-1.5 pt-1">
-                    <div className="w-5 h-5 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-500 text-[9px]">
-                      {(selectedKarya.penulis || 'A').charAt(0).toUpperCase()}
-                    </div>
-                    <span>Oleh: {selectedKarya.penulis || 'Anonim'}</span>
-                  </div>
+                  <span>Oleh: {selectedKarya.penulis || 'Anonim'}</span>
                 </div>
 
-                {/* Konten Utama Detail (Hanya bagian isi ini yang bisa di-scroll di sisi kiri) */}
-                <div className="flex-grow overflow-y-auto pr-1 custom-scrollbar text-xs text-slate-600 leading-relaxed font-medium whitespace-pre-line space-y-4">
-                  {selectedKarya.foto_url && !brokenImages[selectedKarya.id] && (
-                    <img 
-                      src={selectedKarya.foto_url} 
-                      alt={selectedKarya.judul} 
-                      className="w-full h-auto rounded-2xl mb-4 object-cover border border-slate-100 shadow-2xs"
-                    />
-                  )}
+                {/* Isi Konten (Ukuran teks diubah dari text-xs menjadi text-sm) */}
+                <div className="text-sm text-slate-600 leading-relaxed font-medium whitespace-pre-line">
                   {selectedKarya.isi}
                 </div>
               </div>
@@ -121,7 +155,7 @@ export default function KaryaTulisPage() {
             )}
           </div>
 
-          {/* ================= SISI KANAN: MASONRY LIST (SCROLLABLE TINGGI PENUH) ================= */}
+          {/* ================= SISI KANAN: MASONRY LIST ================= */}
           <div className="w-full lg:w-[60%] xl:w-[65%] h-[50%] lg:h-full overflow-y-auto pr-2 custom-scrollbar">
             <div className="columns-1 sm:columns-2 md:columns-3 xl:columns-4 gap-4 space-y-4 w-full">
               {karyaList.map((karya) => {
@@ -136,7 +170,6 @@ export default function KaryaTulisPage() {
                       isSelected ? 'bg-white/80 ring-1 ring-blue-500/20 shadow-xs' : 'hover:bg-slate-100/50'
                     }`}
                   >
-                    {/* Gambar Cover */}
                     {!hasNoImage && (
                       <div className="w-full overflow-hidden rounded-xl relative mb-2.5 bg-slate-100">
                         <img
@@ -148,7 +181,6 @@ export default function KaryaTulisPage() {
                       </div>
                     )}
 
-                    {/* Area Teks Singkat */}
                     <div className="px-1 space-y-1.5 min-w-0">
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900 text-white text-[8px] font-black tracking-wider uppercase w-fit">
                         <Tag className="w-2 h-2" /> {karya.kategori}
@@ -177,7 +209,6 @@ export default function KaryaTulisPage() {
 
         </div>
       ) : (
-        /* KONDISI DATA KOSONG */
         <div className="w-full h-full flex items-center justify-center text-center text-xs font-bold text-slate-400 uppercase tracking-wider">
           Belum ada karya tulis yang diterbitkan
         </div>
