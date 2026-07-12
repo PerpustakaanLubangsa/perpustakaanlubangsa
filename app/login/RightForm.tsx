@@ -1,12 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LogIn, Lock, User, Loader2, Eye, EyeOff, LayoutDashboard, LogOut, UserCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
 export default function RightForm() {
   const router = useRouter();
+  
+  // Ref untuk Auto Focus
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const dashboardBtnRef = useRef<HTMLButtonElement>(null);
   
   // State Input & UI
   const [username, setUsername] = useState('');
@@ -28,6 +32,17 @@ export default function RightForm() {
     };
     checkUser();
   }, []);
+
+  // Efek untuk menangani Auto Focus dinamis
+  useEffect(() => {
+    if (user) {
+      // Fokus ke tombol masuk dashboard jika user sudah login
+      dashboardBtnRef.current?.focus();
+    } else {
+      // Fokus ke input username jika user belum login
+      usernameInputRef.current?.focus();
+    }
+  }, [user]);
 
   // Handler Proses Login Supabase
   const handleLogin = async (e: React.FormEvent) => {
@@ -103,8 +118,9 @@ export default function RightForm() {
             {/* Navigasi / Kontrol Menu */}
             <div className="w-full space-y-3 pt-2">
               <button
+                ref={dashboardBtnRef}
                 onClick={() => router.push('/dashboard')}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white border border-blue-600 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 active:scale-[0.98] shadow-md shadow-blue-500/10"
+                className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white border border-blue-600 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 active:scale-[0.98] shadow-md shadow-blue-500/10 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2"
               >
                 Masuk Dasbor <LayoutDashboard className="w-4 h-4" />
               </button>
@@ -142,7 +158,7 @@ export default function RightForm() {
             )}
 
             {/* FORM LOGIN */}
-            <form onSubmit={handleLogin} className="space-y-4">
+            <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
               {/* INPUT USERNAME */}
               <div className="space-y-1.5">
                 <label htmlFor="username" className="text-[10px] font-black text-slate-400 uppercase tracking-wider block ml-1">
@@ -151,10 +167,12 @@ export default function RightForm() {
                 <div className="relative group flex items-center">
                   <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                   <input
+                    ref={usernameInputRef}
                     id="username"
                     type="text"
                     required
-                    placeholder="contoh: budi"
+                    autoComplete="off"
+                    placeholder="username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full pl-10 pr-28 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all text-slate-800 placeholder:text-slate-400"
@@ -176,7 +194,8 @@ export default function RightForm() {
                     id="password"
                     type={showPassword ? 'text' : 'password'}
                     required
-                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    placeholder="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all text-slate-800 placeholder:text-slate-400"
