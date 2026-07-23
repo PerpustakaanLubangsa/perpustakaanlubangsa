@@ -117,7 +117,7 @@ export default function VisitorRanking() {
     };
   }, []);
 
-  // Hanya menampilkan Badge Gambar Rank bawaan tanpa nomor urut
+  // Badge Gambar Rank
   const getRankBadge = (avatarUrl: string) => {
     const defaultBadge = '/image/profile/default-badge.png';
     return (
@@ -132,7 +132,7 @@ export default function VisitorRanking() {
     );
   };
 
-  // Filter pencarian data klien
+  // Filter pencarian data
   const filteredRankings = rankings.filter((item) => {
     const query = debouncedQuery.toLowerCase();
     return (
@@ -144,7 +144,7 @@ export default function VisitorRanking() {
   // KONDISI 1: TAMPILAN DETAIL SANTRI
   if (selectedUser) {
     return (
-      <div className="bg-slate-50 min-h-screen w-full p-4 md:p-6 transition-all duration-300">
+      <div className="bg-[#0F0F0F] min-h-screen w-full p-4 md:p-6 transition-all duration-300">
         <div className="max-w-4xl mx-auto">
           <ProfileDetailView 
             user={selectedUser} 
@@ -155,29 +155,29 @@ export default function VisitorRanking() {
     );
   }
 
-  // KONDISI 2: DEFAULT VIEW (FRAMELESS LIST & NO RANK NUMBER)
+  // KONDISI 2: DEFAULT VIEW (TEMA GELAP #0F0F0F)
   return (
-    <div className="bg-slate-50 min-h-screen w-full p-4 md:p-6 transition-all duration-300 text-slate-800 flex flex-col justify-between">
+    <div className="bg-[#0F0F0F] min-h-screen w-full p-4 md:p-6 transition-all duration-300 text-slate-100 flex flex-col justify-between">
       <div className="max-w-4xl w-full mx-auto space-y-4">
         
         {/* HEADER & BAR PENCARIAN */}
-        <div className="bg-white border border-slate-200/80 p-4 rounded-2xl shadow-sm space-y-4">
+        <div className="bg-slate-900/60 border border-slate-800/80 p-4 rounded-2xl shadow-sm space-y-4 backdrop-blur-md">
           <div className="flex items-center gap-2">
-            <Award className="h-5 w-5 text-blue-600" />
+            <Award className="h-5 w-5 text-blue-400" />
             <div>
-              <h3 className="text-sm font-black text-slate-900 tracking-tight uppercase">Daftar Peringkat</h3>
+              <h3 className="text-sm font-black text-slate-100 tracking-tight uppercase">Daftar Peringkat</h3>
               <p className="text-[11px] text-slate-400 font-medium">Urutan pembaca teraktif Snowy Library</p>
             </div>
           </div>
 
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
             <input
               type="text"
               placeholder="Cari nama atau NIS santri..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-800 placeholder:text-slate-400"
+              className="w-full pl-10 pr-4 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-medium focus:outline-none focus:border-slate-600 transition-all text-slate-100 placeholder:text-slate-500"
             />
           </div>
         </div>
@@ -189,15 +189,16 @@ export default function VisitorRanking() {
               <div 
                 key={`${item.id}-${index}`} 
                 onClick={() => setSelectedUser(item)}
-                className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer hover:scale-[1.002] active:scale-[0.998] transition-all duration-150 w-full bg-white shadow-sm ${
-                  index === 0 && debouncedQuery === '' ? 'border-amber-300 bg-gradient-to-r from-amber-50/30 to-white' : 'border-slate-200/70'
+                className={`flex items-center justify-between p-3.5 rounded-xl border cursor-pointer hover:scale-[1.002] active:scale-[0.998] transition-all duration-150 w-full bg-slate-900/40 shadow-sm ${
+                  index === 0 && debouncedQuery === '' 
+                    ? 'border-amber-500/40 bg-gradient-to-r from-amber-950/20 via-slate-900/40 to-slate-900/40' 
+                    : 'border-slate-800/60 hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  {/* Hanya panggil gambar badge tanpa angka rank */}
                   {getRankBadge(item.avatar_rank)}
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-black text-slate-800 uppercase truncate">{item.nama}</p>
+                    <p className="text-xs font-black text-slate-200 uppercase truncate">{item.nama}</p>
                     <p className="text-[9px] text-slate-400 font-bold uppercase truncate">
                       {item.organisasi || '-'} • {item.kamar || '-'}
                     </p>
@@ -205,17 +206,17 @@ export default function VisitorRanking() {
                 </div>
                 <div className="flex items-center gap-3 shrink-0 pl-4">
                   <div className="text-right">
-                    <span className="text-xs font-black text-blue-600 italic">{item.total_poin}</span>
-                    <span className="text-[9px] text-slate-400 font-bold uppercase ml-0.5">Pts</span>
+                    <span className="text-xs font-black text-blue-400 italic">{item.total_poin}</span>
+                    <span className="text-[9px] text-slate-500 font-bold uppercase ml-0.5">Pts</span>
                   </div>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
                 </div>
               </div>
             ))}
           </div>
         ) : (
           debouncedQuery !== '' && (
-            <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-xs font-bold text-slate-400 uppercase tracking-wider shadow-sm">
+            <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-8 text-center text-xs font-bold text-slate-500 uppercase tracking-wider shadow-sm">
               Santri tidak ditemukan
             </div>
           )
@@ -225,20 +226,20 @@ export default function VisitorRanking() {
         {debouncedQuery === '' && (
           <div ref={loadMoreRef} className="h-16 flex items-center justify-center w-full mt-2">
             {loading && (
-              <div className="text-slate-400 bg-white border border-slate-200 px-4 py-2 rounded-full shadow-sm flex items-center gap-2 text-xs font-medium">
-                <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> Memuat peringkat...
+              <div className="text-slate-400 bg-slate-900/80 border border-slate-800 px-4 py-2 rounded-full shadow-sm flex items-center gap-2 text-xs font-medium">
+                <Loader2 className="h-4 w-4 animate-spin text-blue-400" /> Memuat peringkat...
               </div>
             )}
             {isLastPage && rankings.length > 0 && (
-              <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest opacity-70">Semua peringkat telah dimuat</div>
+              <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest opacity-70">Semua peringkat telah dimuat</div>
             )}
           </div>
         )}
       </div>
 
       {/* FOOTER */}
-      <div className="max-w-4xl w-full mx-auto text-[10px] font-medium text-center text-slate-400 pt-4 border-t border-slate-200/60 mt-6">
-        Peringkat diperbarui secara otomatis secara <span className="text-blue-500 font-bold">realtime</span>.
+      <div className="max-w-4xl w-full mx-auto text-[10px] font-medium text-center text-slate-500 pt-4 border-t border-slate-800/60 mt-6">
+        Peringkat diperbarui secara otomatis secara <span className="text-blue-400 font-bold">realtime</span>.
       </div>
     </div>
   );

@@ -129,14 +129,14 @@ export default function MemberProfile({ memberId, onBack }: MemberProfileProps) 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[200px]">
-        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="text-center p-4 text-xs text-slate-400 font-medium">
+      <div className="text-center p-4 text-xs text-slate-500 font-medium">
         Data profil tidak ditemukan.
       </div>
     );
@@ -146,13 +146,13 @@ export default function MemberProfile({ memberId, onBack }: MemberProfileProps) 
   const isNamaPanjang = profile.nama && profile.nama.length > 15;
 
   return (
-    <div className={`min-h-screen flex items-center justify-center p-4 bg-slate-50 transition-colors duration-300 ${screenShake ? 'animate-[shakeImpact_0.3s_both]' : ''}`}>
+    <div className={`min-h-screen flex items-center justify-center p-4 bg-[#0F0F0F] text-slate-100 transition-colors duration-300 ${screenShake ? 'animate-[shakeImpact_0.3s_both]' : ''}`}>
       
       {/* 1. CINEMATIC LIGHT INTRO SPLASH */}
       {showIntro && (
-        <div className="fixed inset-0 z-[998] bg-white flex flex-col items-center justify-center transition-opacity duration-300">
+        <div className="fixed inset-0 z-[998] bg-[#0F0F0F] flex flex-col items-center justify-center transition-opacity duration-300">
           <div className="text-center space-y-6 relative flex flex-col items-center justify-center w-full max-w-4xl px-4">
-            <p className="text-[10px] text-blue-600 font-black tracking-[0.5em] uppercase opacity-80 animate-pulse">
+            <p className="text-[10px] text-blue-400 font-black tracking-[0.5em] uppercase opacity-80 animate-pulse">
               RANK UNLOCKED
             </p>
             <div className="flex items-center justify-center relative">
@@ -163,7 +163,7 @@ export default function MemberProfile({ memberId, onBack }: MemberProfileProps) 
                 alt="Rank Intro"
               />
             </div>
-            <h1 className="text-slate-800 text-3xl font-black uppercase italic tracking-widest animate-[gameTextSpread_0.6s_ease-out_0.2s_forwards] opacity-0 py-2">
+            <h1 className="text-slate-100 text-3xl font-black uppercase italic tracking-widest animate-[gameTextSpread_0.6s_ease-out_0.2s_forwards] opacity-0 py-2">
               {profile.rank || 'WARRIOR'}
             </h1>
           </div>
@@ -178,11 +178,11 @@ export default function MemberProfile({ memberId, onBack }: MemberProfileProps) 
       )}
 
       {/* 3. KARTU PROFIL UTAMA */}
-      <div className={`flex flex-col items-center justify-center p-6 text-center bg-white border border-slate-200 rounded-3xl shadow-md max-w-sm w-full mx-auto transition-all duration-500 ${revealActive ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
+      <div className={`flex flex-col items-center justify-center p-6 text-center bg-slate-900/60 border border-slate-800 rounded-3xl shadow-xl backdrop-blur-md max-w-sm w-full mx-auto transition-all duration-500 ${revealActive ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
         
         {/* TEMPAT LANDASAN GAMBAR RANK */}
         <div className="w-[180px] h-[180px] flex items-center justify-center mb-4 relative">
-          <div className={`absolute w-full h-full bg-[radial-gradient(circle,rgba(59,130,246,0.4)_0%,transparent_70%)] rounded-full opacity-0 pointer-events-none z-10 ${flashActive ? 'animate-[flashBurst_0.35s_ease-out_forwards]' : ''}`} />
+          <div className={`absolute w-full h-full bg-[radial-gradient(circle,rgba(59,130,246,0.3)_0%,transparent_70%)] rounded-full opacity-0 pointer-events-none z-10 ${flashActive ? 'animate-[flashBurst_0.35s_ease-out_forwards]' : ''}`} />
           
           <img 
             ref={finalImgRef}
@@ -193,21 +193,21 @@ export default function MemberProfile({ memberId, onBack }: MemberProfileProps) 
         </div>
 
         {/* NAMA RANK */}
-        <span className={`px-4 py-1 rounded-full border border-blue-600 text-blue-600 text-[10px] font-black tracking-widest uppercase bg-blue-50 mb-4 transition-all duration-500 ${staggerShow ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+        <span className={`px-4 py-1 rounded-full border border-blue-500/50 text-blue-400 text-[10px] font-black tracking-widest uppercase bg-blue-950/50 mb-4 transition-all duration-500 ${staggerShow ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
           {(profile.rank || 'WARRIOR').toUpperCase()}
         </span>
 
         {/* NAMA MEMBER (DENGAN EFEK BERJALAN JIKA TERPOTONG) */}
         <div className={`w-full overflow-hidden whitespace-nowrap relative mb-6 h-7 transition-all duration-500 delay-75 ${staggerShow ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
           {isNamaPanjang ? (
-            <div className="inline-block animate-[marqueeName_12s_linear_infinite] text-lg font-extrabold uppercase tracking-wide text-slate-800 pr-4">
+            <div className="inline-block animate-[marqueeName_12s_linear_infinite] text-lg font-extrabold uppercase tracking-wide text-slate-100 pr-4">
               <span>{profile.nama}</span>
-              <span className="mx-8 text-blue-500">•</span>
+              <span className="mx-8 text-blue-400">•</span>
               <span>{profile.nama}</span>
-              <span className="mx-8 text-blue-500">•</span>
+              <span className="mx-8 text-blue-400">•</span>
             </div>
           ) : (
-            <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-800">
+            <h2 className="text-lg font-extrabold uppercase tracking-wide text-slate-100">
               {profile.nama || '---'}
             </h2>
           )}
@@ -216,7 +216,7 @@ export default function MemberProfile({ memberId, onBack }: MemberProfileProps) 
         {/* TOMBOL CATAT KUNJUNGAN LAIN */}
         <button
           onClick={handleReset}
-          className={`w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 hover:scale-[1.03] active:scale-[0.98] cursor-pointer text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-sm transition-all duration-200 ease-out delay-150 ${staggerShow ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
+          className={`w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 hover:scale-[1.03] active:scale-[0.98] cursor-pointer text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-blue-950/30 transition-all duration-200 ease-out delay-150 ${staggerShow ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
         >
           Catat Kunjungan Lain
         </button>

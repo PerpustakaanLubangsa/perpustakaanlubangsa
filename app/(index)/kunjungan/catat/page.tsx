@@ -24,8 +24,8 @@ export default function CatatKunjunganPage() {
   };
 
   return (
-    <div className="h-screen bg-slate-50 flex flex-col p-0 sm:p-2 overflow-hidden">
-      <div className="w-full max-w-none h-full flex flex-col">
+    <div className="h-screen bg-[#0F0F0F] text-slate-100 flex flex-col pt-16 overflow-hidden">
+      <div className="w-full max-w-none h-full flex flex-col p-2 sm:p-3">
         
         {/* Layout Grid Utama */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-stretch flex-1 min-h-0 overflow-y-auto md:overflow-hidden">

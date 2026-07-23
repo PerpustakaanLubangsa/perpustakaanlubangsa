@@ -11,53 +11,54 @@ import { faChevronUp, faArrowLeft } from '@fortawesome/free-solid-svg-icons';
 
 library.add(fas);
 
+// PERUBAHAN: Semua rute page_url kecuali 'Dashboard' dimasukkan ke sub-folder /dashboard
 const NAVIGATION_GROUPS = [
   {
     groupName: 'Utama',
     items: [
       { id: 1, label: 'Dashboard', icon: 'fa-solid fa-house-chimney', page_url: '/dashboard' },
-      { id: 2, label: 'Cari Buku', icon: 'fa-solid fa-magnifying-glass', page_url: '/cari-buku' },
+      { id: 2, label: 'Cari Buku', icon: 'fa-solid fa-magnifying-glass', page_url: '/dashboard/cari-buku' },
     ]
   },
   {
     groupName: 'Operasional',
     items: [
-      { id: 3, label: 'Absensi', icon: 'fa-solid fa-calendar-check', page_url: '/absensi' },
-      { id: 4, label: 'Data Pengunjung', icon: 'fa-solid fa-users-viewfinder', page_url: '/data-pengunjung' },
-      { id: 13, label: 'Sirkulasi', icon: 'fa-solid fa-retweet', page_url: '/sirkulasi' },
-      { id: 16, label: 'Peminjam', icon: 'fa-solid fa-list-ul', page_url: '/daftar-peminjam' },
-      { id: 5, label: 'Manage Absen', icon: 'fa-solid fa-user-gear', page_url: '/manajemen-absensi' },
-      { id: 6, label: 'Rekapitulasi', icon: 'fa-solid fa-chart-pie', page_url: '/rekap' },
+      { id: 3, label: 'Absensi', icon: 'fa-solid fa-calendar-check', page_url: '/dashboard/absensi' },
+      { id: 4, label: 'Data Pengunjung', icon: 'fa-solid fa-users-viewfinder', page_url: '/dashboard/data-pengunjung' },
+      { id: 13, label: 'Sirkulasi', icon: 'fa-solid fa-retweet', page_url: '/dashboard/sirkulasi' },
+      { id: 16, label: 'Peminjam', icon: 'fa-solid fa-list-ul', page_url: '/dashboard/daftar-peminjam' },
+      { id: 5, label: 'Manage Absen', icon: 'fa-solid fa-user-gear', page_url: '/dashboard/manajemen-absensi' },
+      { id: 6, label: 'Rekapitulasi', icon: 'fa-solid fa-chart-pie', page_url: '/dashboard/rekap' },
     ]
   },
   {
     groupName: 'Koleksi & Anggota',
     items: [
-      { id: 10, label: 'Bibliografi', icon: 'fa-solid fa-book', page_url: '/bibliografi' },
-      { id: 11, label: 'Manajemen Rak', icon: 'fa-solid fa-layer-group', page_url: '/manajemen-rak' },
-      { id: 12, label: 'Kategori', icon: 'fa-solid fa-tags', page_url: '/manajemen-kategori' },
-      { id: 14, label: 'Barcode', icon: 'fa-solid fa-barcode', page_url: '/barcode' },
-      { id: 15, label: 'Label', icon: 'fa-solid fa-print', page_url: '/label' },
-      { id: 17, label: 'Anggota', icon: 'fa-solid fa-users', page_url: '/keanggotaan' },
+      { id: 10, label: 'Bibliografi', icon: 'fa-solid fa-book', page_url: '/dashboard/bibliografi' },
+      { id: 11, label: 'Manajemen Rak', icon: 'fa-solid fa-layer-group', page_url: '/dashboard/manajemen-rak' },
+      { id: 12, label: 'Kategori', icon: 'fa-solid fa-tags', page_url: '/dashboard/manajemen-kategori' },
+      { id: 14, label: 'Barcode', icon: 'fa-solid fa-barcode', page_url: '/dashboard/barcode' },
+      { id: 15, label: 'Label', icon: 'fa-solid fa-print', page_url: '/dashboard/label' },
+      { id: 17, label: 'Anggota', icon: 'fa-solid fa-users', page_url: '/dashboard/keanggotaan' },
     ]
   },
   {
     groupName: 'Audit Buku',
     items: [
-      { id: 7, label: 'Scanner', icon: 'fa-solid fa-qrcode', page_url: '/audit-scanner' },
-      { id: 8, label: 'Hasil Audit', icon: 'fa-solid fa-square-poll-vertical', page_url: '/audit-hasil' },
-      { id: 9, label: 'Belum Audit', icon: 'fa-solid fa-folder-minus', page_url: '/audit-belum' },
+      { id: 7, label: 'Scanner', icon: 'fa-solid fa-qrcode', page_url: '/dashboard/audit-scanner' },
+      { id: 8, label: 'Hasil Audit', icon: 'fa-solid fa-square-poll-vertical', page_url: '/dashboard/audit-hasil' },
+      { id: 9, label: 'Belum Audit', icon: 'fa-solid fa-folder-minus', page_url: '/dashboard/audit-belum' },
     ]
   },
   {
     groupName: 'Konten & Sistem',
     items: [
-      { id: 18, label: 'Karya', icon: 'fa-solid fa-pen-nib', page_url: '/karya' },
-      { id: 19, label: 'Admin Karya', icon: 'fa-solid fa-feather-pointed', page_url: '/admin-karya' },
-      { id: 20, label: 'Poin Tambahan', icon: 'fa-solid fa-circle-dollar-to-slot', page_url: '/poin' },
-      { id: 21, label: 'Registrasi Pustakawan', icon: 'fa-solid fa-shield-halved', page_url: '/pendaftaran-pustakawan' },
-      { id: 22, label: 'Feedback', icon: 'fa-solid fa-comment-dots', page_url: '/admin-feedback' },
-      { id: 23, label: 'Tentang', icon: 'fa-solid fa-circle-info', page_url: '/about' },
+      { id: 18, label: 'Karya', icon: 'fa-solid fa-pen-nib', page_url: '/dashboard/karya' },
+      { id: 19, label: 'Admin Karya', icon: 'fa-solid fa-feather-pointed', page_url: '/dashboard/admin-karya' },
+      { id: 20, label: 'Poin Tambahan', icon: 'fa-solid fa-circle-dollar-to-slot', page_url: '/dashboard/poin' },
+      { id: 21, label: 'Registrasi Pustakawan', icon: 'fa-solid fa-shield-halved', page_url: '/dashboard/pendaftaran-pustakawan' },
+      { id: 22, label: 'Feedback', icon: 'fa-solid fa-comment-dots', page_url: '/dashboard/admin-feedback' },
+      { id: 23, label: 'Tentang', icon: 'fa-solid fa-circle-info', page_url: '/dashboard/about' },
     ]
   }
 ];

@@ -2,13 +2,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { User, Loader2, Save, GraduationCap, BookOpen, Layers, Activity, Home } from 'lucide-react';
+import Link from 'next/link';
+import { User, Loader2, Save, GraduationCap, BookOpen, Layers, Activity, Home, ChevronDown, Trophy } from 'lucide-react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 1. Perbarui Interface agar menerima parameter idAnggota
 interface VisitorFormProps {
   onSuccess?: (idAnggota: string) => void;
 }
@@ -208,7 +208,6 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
 
       setSuccessMsg('Kunjungan berhasil disimpan!');
       
-      // Ambil ID sebelum state dibersihkan
       const savedMemberId = selectedAnggota.id;
 
       // Reset State Form
@@ -221,7 +220,6 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
       setSelectedAnggota(null);
       setSelectedBuku(null);
 
-      // 2. Memicu callback murni dengan mengirimkan UUID murni ke komponen Parent
       if (onSuccess) onSuccess(savedMemberId);
 
     } catch (err: any) {
@@ -232,43 +230,38 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
   };
 
   return (
-    <div className="md:col-span-1 bg-white py-5 px-4 sm:px-5 shadow-sm border-b md:border-r border-slate-100 md:rounded-r-2xl h-full flex flex-col justify-start overflow-y-auto max-h-screen">
-      <div className="mb-4 text-center md:text-left">
-        <h2 className="text-base font-bold text-slate-900 tracking-tight uppercase">Buku Tamu</h2>
-        <p className="text-[11px] text-slate-400 mt-0.5">Silakan isi formulir kehadiran di perpustakaan</p>
-      </div>
+    <div className="bg-slate-900/90 p-4 sm:p-5 border border-slate-800 rounded-2xl h-full flex flex-col justify-between overflow-y-auto max-h-full text-slate-100 backdrop-blur-md">
+      <form id="visitor-form" onSubmit={handleSubmit} className="space-y-3" autoComplete="off">
+        {errorMsg && (
+          <div className="mb-3 p-3 rounded-xl bg-red-950/40 border border-red-800/50 text-[11px] text-red-300 font-medium leading-relaxed animate-in fade-in duration-200">
+            {errorMsg}
+          </div>
+        )}
+        {successMsg && (
+          <div className="mb-3 p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/50 text-[11px] text-emerald-300 font-medium animate-in fade-in duration-200">
+            {successMsg}
+          </div>
+        )}
 
-      {errorMsg && (
-        <div className="mb-3 p-3 rounded-xl bg-red-50 border border-red-100 text-[11px] text-red-600 font-medium leading-relaxed animate-in fade-in duration-200">
-          {errorMsg}
-        </div>
-      )}
-      {successMsg && (
-        <div className="mb-3 p-3 rounded-xl bg-green-50 border border-green-100 text-[11px] text-green-700 font-medium animate-in fade-in duration-200">
-          {successMsg}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-3" autoComplete="off">
         {/* INPUT NAMA */}
         <div className="relative" ref={dropAnggotaRef}>
           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nama Pengunjung</label>
           <div className="relative rounded-xl shadow-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <User className="h-3.5 w-3.5 text-slate-400" />
+              <User className="h-3.5 w-3.5 text-slate-500" />
             </div>
             <input
               type="text"
               value={nama}
               onChange={(e) => handleNamaChange(e.target.value)}
               placeholder="Cari nama atau NIS..."
-              className="block w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-100 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400"
+              className="block w-full pl-9 pr-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-slate-600 transition-colors"
               required
             />
           </div>
           {/* Dropdown Hasil Pencarian Nama */}
           {showAnggotaDrop && (
-            <div className="absolute left-0 right-0 top-[calc(100%+4px)] bg-white text-slate-800 rounded-xl shadow-xl max-h-40 overflow-y-auto z-50 border border-slate-100">
+            <div className="absolute left-0 right-0 top-[calc(100%+4px)] bg-slate-900 text-slate-100 rounded-xl shadow-xl max-h-40 overflow-y-auto z-50 border border-slate-800">
               {anggotaSuggestions.map((item) => (
                 <div
                   key={item.id}
@@ -279,10 +272,10 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
                     setSelectedAnggota(item);
                     setShowAnggotaDrop(false);
                   }}
-                  className="p-2 border-b border-slate-100 last:border-none cursor-pointer hover:bg-slate-50 text-left transition-colors"
+                  className="p-2 border-b border-slate-800/60 last:border-none cursor-pointer hover:bg-slate-800 text-left transition-colors"
                 >
-                  <div className="text-xs font-bold text-slate-900">{item.nama}</div>
-                  <div className="text-[10px] text-slate-500">{item.nis || '-'} • Kamar: {item.kamar || '-'}</div>
+                  <div className="text-xs font-bold text-white">{item.nama}</div>
+                  <div className="text-[10px] text-slate-400">{item.nis || '-'} • Kamar: {item.kamar || '-'}</div>
                 </div>
               ))}
             </div>
@@ -295,14 +288,14 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kamar</label>
             <div className="relative rounded-xl shadow-sm">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Home className="h-3.5 w-3.5 text-slate-400" />
+                <Home className="h-3.5 w-3.5 text-slate-500" />
               </div>
               <input
                 type="text"
                 value={kamar}
                 onChange={(e) => setKamar(e.target.value)}
                 placeholder="A-01"
-                className="block w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-100 rounded-xl text-slate-800 focus:outline-none"
+                className="block w-full pl-9 pr-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-slate-600 transition-colors"
                 required
               />
             </div>
@@ -311,19 +304,20 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Jenjang</label>
             <div className="relative rounded-xl shadow-sm">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
+                <GraduationCap className="h-3.5 w-3.5 text-slate-500" />
               </div>
               <select
                 value={jenjang}
                 onChange={(e) => setJenjang(e.target.value)}
-                className="block w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-100 rounded-xl text-slate-800 focus:outline-none appearance-none"
+                className="block w-full pl-9 pr-8 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-slate-600 appearance-none cursor-pointer transition-colors"
                 required
               >
-                <option value="" disabled>Pilih</option>
-                <option value="SLTP">SLTP</option>
-                <option value="SLTA">SLTA</option>
-                <option value="PT">PT</option>
+                <option value="" disabled className="bg-slate-900 text-slate-500">Pilih</option>
+                <option value="SLTP" className="bg-slate-900 text-slate-100">SLTP</option>
+                <option value="SLTA" className="bg-slate-900 text-slate-100">SLTA</option>
+                <option value="PT" className="bg-slate-900 text-slate-100">PT</option>
               </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
             </div>
           </div>
         </div>
@@ -333,20 +327,20 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
           <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Koleksi Buku</label>
           <div className="relative rounded-xl shadow-sm">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <BookOpen className="h-3.5 w-3.5 text-slate-400" />
+              <BookOpen className="h-3.5 w-3.5 text-slate-500" />
             </div>
             <input
               type="text"
               value={buku}
               onChange={(e) => handleBukuChange(e.target.value)}
               placeholder="Cari judul buku atau kode..."
-              className="block w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-100 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400"
+              className="block w-full pl-9 pr-3 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-slate-600 transition-colors"
               required
             />
           </div>
           {/* Dropdown Hasil Pencarian Buku */}
           {showBukuDrop && (
-            <div className="absolute left-0 right-0 top-[calc(100%+4px)] bg-white text-slate-800 rounded-xl shadow-xl max-h-40 overflow-y-auto z-50 border border-slate-100">
+            <div className="absolute left-0 right-0 top-[calc(100%+4px)] bg-slate-900 text-slate-100 rounded-xl shadow-xl max-h-40 overflow-y-auto z-50 border border-slate-800">
               {bukuSuggestions.map((item) => (
                 <div
                   key={item.id}
@@ -356,10 +350,10 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
                     setSelectedBuku(item);
                     setShowBukuDrop(false);
                   }}
-                  className="p-2 border-b border-slate-100 last:border-none cursor-pointer hover:bg-slate-50 text-left transition-colors"
+                  className="p-2 border-b border-slate-800/60 last:border-none cursor-pointer hover:bg-slate-800 text-left transition-colors"
                 >
-                  <div className="text-xs font-bold text-slate-900 line-clamp-1">{item.judul}</div>
-                  <div className="text-[10px] text-slate-500 line-clamp-1">{item.penulis || 'Tanpa Penulis'} • Kat: {item.kategori || '-'}</div>
+                  <div className="text-xs font-bold text-white line-clamp-1">{item.judul}</div>
+                  <div className="text-[10px] text-slate-400 line-clamp-1">{item.penulis || 'Tanpa Penulis'} • Kat: {item.kategori || '-'}</div>
                 </div>
               ))}
             </div>
@@ -372,62 +366,75 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Kategori</label>
             <div className="relative rounded-xl shadow-sm">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Layers className="h-3.5 w-3.5 text-slate-400" />
+                <Layers className="h-3.5 w-3.5 text-slate-500" />
               </div>
               <select
                 value={kategori}
                 onChange={(e) => setKategori(e.target.value)}
-                className="block w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-100 rounded-xl text-slate-800 focus:outline-none appearance-none"
+                className="block w-full pl-9 pr-8 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-slate-600 appearance-none cursor-pointer transition-colors"
                 required
               >
-                <option value="" disabled>{kategoriOptions.length === 0 ? 'Memuat...' : 'Pilih'}</option>
+                <option value="" disabled className="bg-slate-900 text-slate-500">{kategoriOptions.length === 0 ? 'Memuat...' : 'Pilih'}</option>
                 {kategoriOptions.map((katOption, index) => (
-                  <option key={index} value={katOption}>{katOption}</option>
+                  <option key={index} value={katOption} className="bg-slate-900 text-slate-100">{katOption}</option>
                 ))}
               </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
             </div>
           </div>
           <div>
             <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Aktivitas</label>
             <div className="relative rounded-xl shadow-sm">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Activity className="h-3.5 w-3.5 text-slate-400" />
+                <Activity className="h-3.5 w-3.5 text-slate-500" />
               </div>
               <select
                 value={aktivitas}
                 onChange={(e) => setAktivitas(e.target.value)}
-                className="block w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-100 rounded-xl text-slate-800 focus:outline-none appearance-none"
+                className="block w-full pl-9 pr-8 py-2 text-xs bg-slate-950 border border-slate-800 rounded-xl text-slate-100 focus:outline-none focus:border-slate-600 appearance-none cursor-pointer transition-colors"
                 required
               >
-                <option value="" disabled>Pilih</option>
-                <option value="Baca">Baca</option>
-                <option value="Pinjam">Pinjam</option>
+                <option value="" disabled className="bg-slate-900 text-slate-500">Pilih</option>
+                <option value="Baca" className="bg-slate-900 text-slate-100">Baca</option>
+                <option value="Pinjam" className="bg-slate-900 text-slate-100">Pinjam</option>
               </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
             </div>
           </div>
         </div>
-
-        {/* BUTTON SUBMIT */}
-        <div className="pt-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center items-center gap-2 py-2 px-4 rounded-xl text-xs font-bold text-center text-white bg-slate-950 hover:bg-slate-900 transition-colors shadow-sm disabled:bg-slate-400 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Menyinkronkan...
-              </>
-            ) : (
-              <>
-                <Save className="h-3.5 w-3.5" />
-                Simpan Kunjungan
-              </>
-            )}
-          </button>
-        </div>
       </form>
+
+      {/* FOOTER ACTIONS (Ditarik ke Paling Bawah Card) */}
+      <div className="pt-4 space-y-2 border-t border-slate-800/80 mt-4">
+        {/* BUTTON SUBMIT */}
+        <button
+          type="submit"
+          form="visitor-form"
+          disabled={loading}
+          className="w-full flex justify-center items-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-center text-slate-900 bg-white hover:bg-slate-200 active:scale-[0.98] transition-all shadow-sm disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed cursor-pointer"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-900" />
+              Menyinkronkan...
+            </>
+          ) : (
+            <>
+              <Save className="h-3.5 w-3.5" />
+              Simpan Kunjungan
+            </>
+          )}
+        </button>
+
+        {/* BUTTON LEADERBOARD */}
+        <Link
+          href="/leaderboard"
+          className="w-full flex justify-center items-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-center text-slate-300 bg-slate-950 hover:bg-slate-800 hover:text-white border border-slate-800 active:scale-[0.98] transition-all cursor-pointer"
+        >
+          <Trophy className="h-3.5 w-3.5 text-amber-400" />
+          Lihat Leaderboard
+        </Link>
+      </div>
     </div>
   );
 }

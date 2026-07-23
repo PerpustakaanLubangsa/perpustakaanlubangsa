@@ -95,75 +95,75 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       {/* Overlay Gelap Flat */}
       <div 
-        className="absolute inset-0 bg-slate-950/50 transition-opacity duration-300"
+        className="absolute inset-0 bg-black/75 transition-opacity duration-300"
         onClick={onClose}
       />
 
       {/* Konten Utama Modal */}
-      <div className="relative bg-white w-full max-w-4xl h-[90vh] md:h-auto max-h-[90vh] rounded-2xl overflow-hidden border border-slate-100 flex flex-col md:flex-row animate-in fade-in zoom-in-95 duration-200 z-10">
+      <div className="relative bg-[#111111] w-full max-w-4xl h-[90vh] md:h-auto max-h-[90vh] rounded-2xl overflow-hidden border border-slate-800 flex flex-col md:flex-row animate-in fade-in zoom-in-95 duration-200 z-10 text-slate-100">
         
         {/* Tombol Tutup Silang */}
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors z-20 bg-white/80 border border-slate-100"
+          className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors z-20 bg-slate-900/80 border border-slate-800"
         >
           <X className="h-5 w-5" />
         </button>
 
         {/* Bagian Sisi Kiri: Visual Sampul (Static/Tidak dapat di-scroll) */}
-        <div className="w-full md:w-1/3 bg-slate-50 flex flex-col items-center justify-center p-6 border-b md:border-b-0 md:border-r border-slate-100 shrink-0">
+        <div className="w-full md:w-1/3 bg-slate-950 flex flex-col items-center justify-center p-6 border-b md:border-b-0 md:border-r border-slate-800 shrink-0">
           <div className="w-full flex flex-col items-center space-y-6">
-            <div className="relative aspect-[3/4] w-full max-w-[220px] overflow-hidden rounded-xl bg-white shadow-sm border border-slate-100 flex items-center justify-center">
+            <div className="relative aspect-[3/4] w-full max-w-[220px] overflow-hidden rounded-xl bg-slate-900 shadow-sm border border-slate-800 flex items-center justify-center">
               {book.sampul_url ? (
                 <img src={book.sampul_url} alt={book.judul} className="w-full h-full object-cover" />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">Tanpa Sampul</div>
+                <div className="w-full h-full flex items-center justify-center text-xs text-slate-500">Tanpa Sampul</div>
               )}
             </div>
 
             {/* Panel Statistik Internal Flat Mini */}
-            <div className="w-full max-w-[220px] grid grid-cols-2 gap-2 text-center bg-white p-3 rounded-xl border border-slate-100">
+            <div className="w-full max-w-[220px] grid grid-cols-2 gap-2 text-center bg-slate-900 p-3 rounded-xl border border-slate-800">
               <div className="flex flex-col items-center justify-center p-1.5">
                 <Eye className="h-4 w-4 text-slate-400 mb-1" />
                 <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Dibaca</span>
-                <span className="text-xs font-bold text-slate-800">{book.jumlah_baca || 0}x</span>
+                <span className="text-xs font-bold text-slate-100">{book.jumlah_baca || 0}x</span>
               </div>
-              <div className="flex flex-col items-center justify-center p-1.5 border-l border-slate-100">
+              <div className="flex flex-col items-center justify-center p-1.5 border-l border-slate-800">
                 <Bookmark className="h-4 w-4 text-slate-400 mb-1" />
                 <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Dipinjam</span>
-                <span className="text-xs font-bold text-slate-800">{book.jumlah_pinjam || 0}x</span>
+                <span className="text-xs font-bold text-slate-100">{book.jumlah_pinjam || 0}x</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Bagian Sisi Kanan: Seluruh Teks Informasi Metadata (Dapat di-scroll secara independen & Custom Scrollbar disembunyikan) */}
+        {/* Bagian Sisi Kanan: Seluruh Teks Informasi Metadata */}
         <div 
           className="w-full md:w-2/3 p-6 sm:p-8 flex flex-col overflow-y-auto max-h-full space-y-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
         >
           <div className="space-y-5">
             {/* Kategori Badge */}
             <div>
-              <span className="inline-block px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-700 rounded-md">
+              <span className="inline-block px-2.5 py-0.5 text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700/60 rounded-md">
                 {book.kategori || 'Umum'}
               </span>
             </div>
 
             {/* Judul Utama & Nama Penulis */}
             <div className="space-y-1.5">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight leading-snug">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-100 tracking-tight leading-snug">
                 {book.judul}
               </h2>
-              <p className="text-sm text-slate-500">
-                Ditulis oleh <span className="text-slate-800 font-semibold">{book.penulis || 'Anonim'}</span>
+              <p className="text-sm text-slate-400">
+                Ditulis oleh <span className="text-slate-200 font-semibold">{book.penulis || 'Anonim'}</span>
               </p>
             </div>
 
             {/* Blok Abstrak / Deskripsi Buku */}
             {book.abstrak && (
-              <div className="bg-slate-50/50 p-4 rounded-xl border border-slate-100/60">
+              <div className="bg-slate-900/60 p-4 rounded-xl border border-slate-800">
                 <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Abstrak / Ringkasan</h4>
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed whitespace-pre-line">
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed whitespace-pre-line">
                   {book.abstrak}
                 </p>
               </div>
@@ -172,31 +172,31 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
             {/* Blok Spesifikasi / Detail Informasi Dokumen */}
             <div>
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">Informasi Detail</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs border-t border-slate-100 pt-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-xs border-t border-slate-800 pt-3">
                 <div className="flex items-center gap-3">
                   <Hash className="h-4 w-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400 w-24 shrink-0">ISBN / ISSN</span>
-                  <span className="text-slate-800 font-medium">{book.isbn_issn || '-'}</span>
+                  <span className="text-slate-200 font-medium">{book.isbn_issn || '-'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Building className="h-4 w-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400 w-24 shrink-0">Penerbit</span>
-                  <span className="text-slate-800 font-medium">{book.penerbit || '-'}</span>
+                  <span className="text-slate-200 font-medium">{book.penerbit || '-'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400 w-24 shrink-0">Tahun Terbit</span>
-                  <span className="text-slate-800 font-medium">{book.tahun_terbit || '-'}</span>
+                  <span className="text-slate-200 font-medium">{book.tahun_terbit || '-'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <FileText className="h-4 w-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400 w-24 shrink-0">Deskripsi Fisik</span>
-                  <span className="text-slate-800 font-medium">{book.deskripsi_fisik || '-'}</span>
+                  <span className="text-slate-200 font-medium">{book.deskripsi_fisik || '-'}</span>
                 </div>
                 <div className="flex items-center gap-3 sm:col-span-2">
                   <BookOpen className="h-4 w-4 text-slate-400 shrink-0" />
                   <span className="text-slate-400 w-24 shrink-0">Tanggal Input</span>
-                  <span className="text-slate-800 font-medium">{formatDate(book.created_at)}</span>
+                  <span className="text-slate-200 font-medium">{formatDate(book.created_at)}</span>
                 </div>
               </div>
             </div>
@@ -207,13 +207,13 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
               <div className="flex flex-wrap gap-1.5">
                 {book.topik && book.topik.length > 0 ? (
                   book.topik.map((t, idx) => (
-                    <span key={idx} className="flex items-center gap-1 px-2 py-0.5 text-xs bg-slate-50 text-slate-600 rounded-md border border-slate-100">
+                    <span key={idx} className="flex items-center gap-1 px-2 py-0.5 text-xs bg-slate-900 text-slate-300 rounded-md border border-slate-800">
                       <Tag className="h-3 w-3 text-slate-400" />
                       {t}
                     </span>
                   ))
                 ) : (
-                  <span className="text-xs text-slate-400 italic">-</span>
+                  <span className="text-xs text-slate-500 italic">-</span>
                 )}
               </div>
             </div>
@@ -223,7 +223,7 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">
                 Ketersediaan Eksemplar Fisik ({eksemplarList.length})
               </h4>
-              <div className="border border-slate-100 rounded-xl overflow-hidden text-xs">
+              <div className="border border-slate-800 rounded-xl overflow-hidden text-xs bg-slate-900/40">
                 {loadingEksemplar ? (
                   <div className="p-4 text-center text-slate-400 flex items-center justify-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" /> Memuat salinan...
@@ -232,27 +232,27 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
                   <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-100 text-slate-500 font-medium">
+                        <tr className="bg-slate-900 border-b border-slate-800 text-slate-400 font-medium">
                           <th className="p-2.5 pl-4">Barcode / Kode</th>
                           <th className="p-2.5">No. Panggil</th>
                           <th className="p-2.5">Lokasi Rak</th>
                           <th className="p-2.5 pr-4 text-right">Status</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                      <tbody className="divide-y divide-slate-800/60 text-slate-300">
                         {eksemplarList.map((item) => (
-                          <tr key={item.id} className="hover:bg-slate-50/40">
-                            <td className="p-2.5 pl-4 font-mono font-medium text-slate-900 flex items-center gap-1.5">
+                          <tr key={item.id} className="hover:bg-slate-800/50 transition-colors">
+                            <td className="p-2.5 pl-4 font-mono font-medium text-slate-100 flex items-center gap-1.5">
                               <Barcode className="h-3.5 w-3.5 text-slate-400" />
                               {item.kode}
                             </td>
                             <td className="p-2.5 font-medium">{item.nomor_panggil || '-'}</td>
                             <td className="p-2.5">{item.lokasi_rak || '-'}</td>
                             <td className="p-2.5 pr-4 text-right">
-                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold
+                              <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold border
                                 ${item.status?.toLowerCase() === 'tersedia' 
-                                  ? 'bg-green-50 text-green-700' 
-                                  : 'bg-amber-50 text-amber-700'
+                                  ? 'bg-emerald-950/60 text-emerald-400 border-emerald-800/50' 
+                                  : 'bg-amber-950/60 text-amber-400 border-amber-800/50'
                                 }`}
                               >
                                 {item.status || 'Unknown'}
@@ -264,7 +264,7 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
                     </table>
                   </div>
                 ) : (
-                  <div className="p-4 text-center text-slate-400 italic">
+                  <div className="p-4 text-center text-slate-500 italic">
                     Belum ada data eksemplar fisik untuk katalog ini.
                   </div>
                 )}

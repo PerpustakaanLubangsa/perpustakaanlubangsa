@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Loader2, BookX, Image as ImageIcon, ChevronDown, BookOpenText } from 'lucide-react'; 
+import { Search, Loader2, BookX, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import BookDetailModal from '@/components/book-detail-modal'; 
 
@@ -54,9 +54,9 @@ function LazyImage({ src, alt }: { src: string; alt: string }) {
   }, []);
 
   return (
-    <div ref={imgRef} className="w-full h-full bg-slate-800 relative overflow-hidden flex items-center justify-center">
+    <div ref={imgRef} className="w-full h-full bg-slate-100 relative overflow-hidden flex items-center justify-center">
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center text-slate-600">
+        <div className="absolute inset-0 flex items-center justify-center text-slate-300">
           <ImageIcon className="h-8 w-8 stroke-[1.2]" />
         </div>
       )}
@@ -81,16 +81,16 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
-  // State untuk menyimpan kata kunci yang benar-benar dicari setelah loading selesai
-  const [currentSearchedTerm, setCurrentSearchedTerm] = useState('');
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [isSearchingUI, setIsSearchingUI] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [loadingText, setLoadingText] = useState('mencari.');
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
 
   const observer = useRef<IntersectionObserver | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Ambil list Kategori Unik dari data Buku di Supabase saat komponen dipasang
   useEffect(() => {
@@ -116,6 +116,20 @@ export default function HomePage() {
     };
 
     fetchCategories();
+  }, []);
+
+  // Efek menyembunyikan tag kategori saat scroll down
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 40) {
+        setIsScrolledDown(true);
+      } else {
+        setIsScrolledDown(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   // Animasi Teks Titik-Titik Berjalan
@@ -184,11 +198,6 @@ export default function HomePage() {
         setBooks((prev) => (isNewSearch ? mappedData : [...prev, ...mappedData]));
         setHasMore(data.length === ITEMS_PER_PAGE);
       }
-      
-      // Set term pencarian saat ini setelah berhasil fetch untuk isNewSearch
-      if (isNewSearch) {
-        setCurrentSearchedTerm(search);
-      }
     } catch (err) {
       console.error('Gagal mengambil data biblio:', err);
     } finally {
@@ -230,8 +239,20 @@ export default function HomePage() {
     }
   };
 
+  // Fungsi menggeser menu tag kategori ke kiri/kanan menggunakan tombol panah
+  const handleScrollCategories = (direction: 'left' | 'right') => {
+    if (scrollContainerRef.current) {
+      const scrollAmount = 200;
+      scrollContainerRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth',
+      });
+    }
+  };
+
   return (
-    <main className="min-h-screen bg-black text-slate-100">
+    <main className="min-h-screen bg-[#F5F5F5] text-slate-800 p-2 sm:p-4">
+      {/* CSS internal untuk menyembunyikan scrollbar bawaan browser */}
       <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar {
           display: none;
@@ -242,53 +263,21 @@ export default function HomePage() {
         }
       `}} />
 
-      {/* --- HERO SECTION --- */}
-      <section className="relative w-full h-[90vh] flex flex-col items-center justify-center text-center overflow-hidden">
-        <img
-          src="/bg.png"
-          alt="Hero Background"
-          className="absolute inset-0 w-full h-full object-cover"
-        />
+      <div className="w-full max-w-full mx-auto flex flex-col">
         
-        <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-black/80 to-transparent pointer-events-none z-10" />
-
-        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black to-transparent pointer-events-none z-10" />
-      </section>
-
-      {/* --- SEARCH BAR DI PERBATASAN --- */}
-      <div className="w-full max-w-5xl mx-auto px-4 relative z-20 -mt-7">
-        {/* PERUBAHAN: Warna bg diubah ke bg-slate-900, border dihapus (border-none), shadow disesuaikan */}
-        <div className="bg-slate-900 border-none rounded-3xl shadow-2xl shadow-black/70 p-2 flex flex-col sm:flex-row items-center gap-3">
-          
-          {/* Dropdown Kategori */}
-          {/* PERUBAHAN: Warna bg internal dropdown disesuaikan (bg-slate-800/80) dan border dihapus */}
-          <div className="relative w-full sm:w-56 flex-shrink-0 group">
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full h-12 pl-5 pr-10 text-sm font-semibold bg-slate-800/80 hover:bg-slate-800 border-none rounded-full text-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-600 appearance-none cursor-pointer transition-all tracking-tight"
-            >
-              {categories.map((cat) => (
-                <option key={cat} value={cat} className="bg-slate-900 text-slate-200">
-                  {cat === 'Semua' ? 'Semua Kategori' : cat}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400 group-hover:text-slate-200 pointer-events-none transition-colors" />
-          </div>
-
-          {/* Input Pencarian */}
-          {/* PERUBAHAN: Warna bg internal input disesuaikan (bg-slate-800/80) dan border dihapus */}
-          <div className="relative w-full flex items-center flex-grow group">
+        {/* Header Kunci/Beku (Fixed Top) */}
+        <header className="fixed top-0 left-20 right-0 z-40 bg-[#F5F5F5] px-2 sm:px-4 pt-4 border-b border-transparent">
+          <div className="relative w-full flex items-center">
             <input
               type="text"
               value={searchQuery}
               onChange={handleSearchChange}
-              placeholder="Cari judul buku atau nama penulis..."
-              className="w-full h-12 pl-6 pr-28 text-base font-medium bg-slate-800/80 hover:bg-slate-800 border-none rounded-full text-slate-50 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-600 transition-all tracking-tight"
+              placeholder="Cari buku berdasarkan judul, penulis, atau kategori..."
+              style={{ backgroundColor: '#E5E5E0' }}
+              className="w-full h-11 pl-4 pr-32 text-sm border border-transparent rounded-xl text-slate-800 placeholder-slate-500 focus:outline-none focus:border-transparent transition-all duration-200"
             />
             
-            <div className="absolute right-5 pointer-events-none flex items-center gap-2 overflow-hidden h-full">
+            <div className="absolute right-4 pointer-events-none flex items-center gap-2 overflow-hidden h-full">
               <div 
                 className={`flex items-center gap-1.5 transition-all duration-300 ease-in-out ${
                   isSearchingUI ? 'transform translate-x-0 opacity-100' : 'transform translate-x-4 opacity-0'
@@ -296,64 +285,83 @@ export default function HomePage() {
               >
                 {isSearchingUI && (
                   <>
-                    <Loader2 className="h-4 w-4 text-slate-500 animate-spin" />
-                    <span className="text-sm font-semibold text-slate-400 select-none tabular-nums tracking-tight">
+                    <Search className="h-4 w-4 text-slate-500" />
+                    <span className="text-xs font-medium text-slate-500 select-none w-16 tabular-nums">
                       {loadingText}
                     </span>
                   </>
                 )}
               </div>
-              {!isSearchingUI && <Search className="h-5 w-5 text-slate-400 group-hover:text-slate-200 transition-colors" />}
+              {!isSearchingUI && <Search className="h-4 w-4 text-slate-500" />}
             </div>
           </div>
 
-        </div>
-      </div>
+          {/* Bar Wrapper Tag Kategori Buku dengan Tombol Navigasi Panah */}
+          <div 
+            className={`relative flex items-center transition-all duration-300 ease-in-out ${
+              isScrolledDown 
+                ? 'max-h-0 opacity-0 pointer-events-none transform -translate-y-2' 
+                : 'max-h-16 opacity-100'
+            }`}
+          >
+            {/* Tombol Geser Kiri */}
+            <button 
+              onClick={() => handleScrollCategories('left')}
+              className="absolute left-0 z-10 p-1 bg-[#F5F5F5]/90 backdrop-blur-sm rounded-full shadow-sm border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
+              aria-label="Scroll kiri"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
 
-      {/* --- KATALOG BUKU --- */}
-      <div className="w-full max-w-7xl mx-auto px-4 pt-12 pb-12">
-        
-        {/* Teks Status Pencarian */}
-        {!loading && currentSearchedTerm && books.length > 0 && (
-          <div className="mb-8 pb-2 border-b border-slate-800 hover:border-slate-700 transition-colors">
-            <h2 className="text-xl font-medium text-slate-300">
-              Hasil pencarian &ldquo;<span className="text-white font-semibold">{currentSearchedTerm}</span>&rdquo;
-            </h2>
-            <p className="text-sm text-slate-500 mt-1">Ditemukan {books.length} koleksi</p>
+            {/* Container Item Tag Kategori */}
+            <div 
+              ref={scrollContainerRef}
+              className="flex items-center gap-2 overflow-x-auto py-3 px-7 w-full hide-scrollbar scroll-smooth"
+            >
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors duration-150 ${
+                    selectedCategory === cat
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Tombol Geser Kanan */}
+            <button 
+              onClick={() => handleScrollCategories('right')}
+              className="absolute right-0 z-10 p-1 bg-[#F5F5F5]/90 backdrop-blur-sm rounded-full shadow-sm border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
+              aria-label="Scroll kanan"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </header>
+
+        {/* Kondisi Jika Buku Tidak Ditemukan */}
+        {!loading && books.length === 0 && (
+          <div className="pt-36 pb-12 flex flex-col items-center justify-center text-center px-4">
+            <div className="p-4 bg-slate-100 rounded-full text-slate-400 mb-4">
+              <BookX className="h-10 w-10 stroke-[1.5]" />
+            </div>
+            <h3 className="text-base font-semibold text-slate-800 mb-1">
+              Buku Tidak Ditemukan
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
+              Kami tidak dapat menemukan hasil untuk kata kunci atau kategori terpilih.
+            </p>
           </div>
         )}
 
-        {/* Kondisi Jika Buku Tidak Ditemukan */}
-        <div className='no-blur'>
-          {!loading && books.length === 0 && (
-            <div className="py-20 flex flex-col items-center justify-center text-center px-4 bg-[#111111] rounded-2xl border border-slate-800 shadow-inner">
-              <div className="p-4 bg-slate-800/60 rounded-full text-slate-500 mb-6 ring-1 ring-slate-700/50">
-                <BookX className="h-12 w-12 stroke-[1.2]" />
-              </div>
-              
-              {currentSearchedTerm ? (
-                <h3 className="text-xl font-semibold text-white mb-2 tracking-tight">
-                  Tidak ditemukan hasil pencarian &ldquo;<span className="text-slate-300">{currentSearchedTerm}</span>&rdquo;
-                </h3>
-              ) : (
-                <h3 className="text-xl font-semibold text-white mb-2 tracking-tight">
-                  Buku Tidak Ditemukan
-                </h3>
-              )}
-              
-              <p className="text-sm text-slate-400 max-w-md leading-relaxed">
-                {currentSearchedTerm 
-                  ? "Coba periksa kembali ejaan kata kunci Anda atau gunakan istilah yang lebih umum."
-                  : "Kami tidak dapat menemukan koleksi buku dalam kategori ini saat ini."
-                }
-              </p>
-            </div>
-          )}
-        </div>
-
         {/* Grid Katalog Buku */}
         {books.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-6 gap-y-10">
+          <div className="pt-32 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
             {books.map((book, index) => {
               const isLastElement = books.length === index + 1;
 
@@ -362,45 +370,37 @@ export default function HomePage() {
                   key={book.id}
                   ref={isLastElement ? lastBookElementRef : null}
                   onClick={() => setSelectedBook(book)}
-                  className="flex flex-col cursor-pointer transition-all duration-300 hover:-translate-y-2 group bg-transparent border-none shadow-none"
+                  className="bg-[#F5F5F5] rounded-xl overflow-hidden flex flex-col cursor-pointer"
                 >
                   {/* Container Cover Buku */}
-                  <div className="relative aspect-[3/4.2] bg-slate-800 rounded-xl overflow-hidden mb-4 shadow-md shadow-black/60 transition-shadow duration-300 group-hover:shadow-xl group-hover:shadow-black/80">
+                  <div className="relative aspect-[3/4] bg-slate-200 overflow-hidden rounded-xl">
                     {book.sampul_url ? (
                       <LazyImage src={book.sampul_url} alt={book.judul} />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 p-4 text-center">
+                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">
                         Tanpa Sampul
                       </div>
                     )}
-                    
-                    {/* Overlay "BUKA DETAIL" (Murni Transparan, Tanpa Blur) */}
-                    <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center gap-3 p-4">
-                      <BookOpenText className="w-10 h-10 text-white/90" strokeWidth={1.2} />
-                      <span className="text-xs font-semibold text-white tracking-wider uppercase bg-black/60 px-3 py-1.5 rounded-full border border-white/20">
-                        Buka Detail
-                      </span>
-                    </div>
                   </div>
 
                   {/* Informasi Buku */}
-                  <div className="px-1 flex flex-col flex-grow justify-between">
+                  <div className="pt-3 pb-1 px-1 flex flex-col flex-grow justify-between">
                     <div>
-                      <div className="flex flex-wrap gap-1.5 mb-2.5">
-                        <span className="inline-block px-2 py-0.5 text-[10px] font-semibold bg-slate-700 text-slate-200 rounded tracking-wider uppercase">
+                      <div className="flex flex-wrap gap-1 mb-1.5">
+                        <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold bg-slate-900 text-white rounded">
                           {book.kategori || 'Umum'}
                         </span>
-                        {book.topik && book.topik.slice(0, 1).map((t, idx) => (
-                          <span key={idx} className="inline-block px-1.5 py-0.5 text-[10px] font-normal bg-slate-950 text-slate-400 rounded border border-slate-800 truncate max-w-[100px]">
+                        {book.topik && book.topik.slice(0, 2).map((t, idx) => (
+                          <span key={idx} className="inline-block px-1.5 py-0.5 text-[10px] font-normal bg-slate-100 text-slate-600 rounded border border-slate-200">
                             {t}
                           </span>
                         ))}
                       </div>
-                      <h2 className="text-sm font-semibold text-slate-100 line-clamp-2 leading-snug group-hover:text-white transition-colors duration-300">
+                      <h2 className="text-sm font-semibold text-slate-900 line-clamp-2 leading-snug">
                         {book.judul}
                       </h2>
                     </div>
-                    <p className="text-xs text-slate-400 mt-2 truncate font-medium hover:text-slate-200 transition-colors">
+                    <p className="text-xs text-slate-500 mt-1 truncate">
                       {book.penulis || 'Anonim'}
                     </p>
                   </div>
@@ -411,9 +411,9 @@ export default function HomePage() {
         )}
 
         {/* Indikator Loading Bawah */}
-        {loading && books.length > 0 && (
-          <div className="w-full flex justify-center py-16">
-            <Loader2 className="h-9 w-9 text-slate-500 animate-spin" />
+        {loading && (
+          <div className="w-full flex justify-center py-8">
+            <Loader2 className="h-6 w-6 text-slate-400 animate-spin" />
           </div>
         )}
         
