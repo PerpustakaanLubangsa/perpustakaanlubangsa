@@ -54,9 +54,9 @@ function LazyImage({ src, alt }: { src: string; alt: string }) {
   }, []);
 
   return (
-    <div ref={imgRef} className="w-full h-full bg-slate-100 relative overflow-hidden flex items-center justify-center">
+    <div ref={imgRef} className="w-full h-full bg-slate-950/80 relative overflow-hidden flex items-center justify-center">
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center text-slate-300">
+        <div className="absolute inset-0 flex items-center justify-center text-slate-700">
           <ImageIcon className="h-8 w-8 stroke-[1.2]" />
         </div>
       )}
@@ -251,7 +251,7 @@ export default function HomePage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#F5F5F5] text-slate-800 p-2 sm:p-4">
+    <main className="min-h-screen bg-[#0b0c10] text-slate-100 p-2 sm:p-4">
       {/* CSS internal untuk menyembunyikan scrollbar bawaan browser */}
       <style dangerouslySetInnerHTML={{__html: `
         .hide-scrollbar::-webkit-scrollbar {
@@ -266,15 +266,14 @@ export default function HomePage() {
       <div className="w-full max-w-full mx-auto flex flex-col">
         
         {/* Header Kunci/Beku (Fixed Top) */}
-        <header className="fixed top-0 left-20 right-0 z-40 bg-[#F5F5F5] px-2 sm:px-4 pt-4 border-b border-transparent">
+        <header className="fixed top-0 left-20 right-0 z-40 bg-[#0b0c10]/95 backdrop-blur-md px-2 sm:px-4 pt-4 border-b border-slate-800/40">
           <div className="relative w-full flex items-center">
             <input
               type="text"
               value={searchQuery}
               onChange={handleSearchChange}
               placeholder="Cari buku berdasarkan judul, penulis, atau kategori..."
-              style={{ backgroundColor: '#E5E5E0' }}
-              className="w-full h-11 pl-4 pr-32 text-sm border border-transparent rounded-xl text-slate-800 placeholder-slate-500 focus:outline-none focus:border-transparent transition-all duration-200"
+              className="w-full h-11 pl-4 pr-32 text-sm bg-slate-900/90 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 transition-all duration-200"
             />
             
             <div className="absolute right-4 pointer-events-none flex items-center gap-2 overflow-hidden h-full">
@@ -285,8 +284,8 @@ export default function HomePage() {
               >
                 {isSearchingUI && (
                   <>
-                    <Search className="h-4 w-4 text-slate-500" />
-                    <span className="text-xs font-medium text-slate-500 select-none w-16 tabular-nums">
+                    <Search className="h-4 w-4 text-cyan-400" />
+                    <span className="text-xs font-medium text-cyan-400 select-none w-16 tabular-nums">
                       {loadingText}
                     </span>
                   </>
@@ -307,7 +306,7 @@ export default function HomePage() {
             {/* Tombol Geser Kiri */}
             <button 
               onClick={() => handleScrollCategories('left')}
-              className="absolute left-0 z-10 p-1 bg-[#F5F5F5]/90 backdrop-blur-sm rounded-full shadow-sm border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
+              className="absolute left-0 z-10 p-1 bg-slate-900/90 backdrop-blur-sm rounded-full shadow-md border border-slate-800 text-slate-400 hover:text-slate-100 hover:border-slate-700 transition-colors"
               aria-label="Scroll kiri"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -322,10 +321,10 @@ export default function HomePage() {
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors duration-150 ${
+                  className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-all duration-150 ${
                     selectedCategory === cat
-                      ? 'bg-slate-900 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-semibold'
+                      : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800 hover:text-slate-200'
                   }`}
                 >
                   {cat}
@@ -336,7 +335,7 @@ export default function HomePage() {
             {/* Tombol Geser Kanan */}
             <button 
               onClick={() => handleScrollCategories('right')}
-              className="absolute right-0 z-10 p-1 bg-[#F5F5F5]/90 backdrop-blur-sm rounded-full shadow-sm border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
+              className="absolute right-0 z-10 p-1 bg-slate-900/90 backdrop-blur-sm rounded-full shadow-md border border-slate-800 text-slate-400 hover:text-slate-100 hover:border-slate-700 transition-colors"
               aria-label="Scroll kanan"
             >
               <ChevronRight className="h-4 w-4" />
@@ -347,13 +346,13 @@ export default function HomePage() {
         {/* Kondisi Jika Buku Tidak Ditemukan */}
         {!loading && books.length === 0 && (
           <div className="pt-36 pb-12 flex flex-col items-center justify-center text-center px-4">
-            <div className="p-4 bg-slate-100 rounded-full text-slate-400 mb-4">
+            <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-full text-slate-500 mb-4">
               <BookX className="h-10 w-10 stroke-[1.5]" />
             </div>
-            <h3 className="text-base font-semibold text-slate-800 mb-1">
+            <h3 className="text-base font-semibold text-slate-200 mb-1">
               Buku Tidak Ditemukan
             </h3>
-            <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
+            <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
               Kami tidak dapat menemukan hasil untuk kata kunci atau kategori terpilih.
             </p>
           </div>
@@ -370,14 +369,14 @@ export default function HomePage() {
                   key={book.id}
                   ref={isLastElement ? lastBookElementRef : null}
                   onClick={() => setSelectedBook(book)}
-                  className="bg-[#F5F5F5] rounded-xl overflow-hidden flex flex-col cursor-pointer"
+                  className="bg-[#0b0c10] rounded-xl overflow-hidden flex flex-col cursor-pointer group transition-all duration-200 hover:-translate-y-1"
                 >
                   {/* Container Cover Buku */}
-                  <div className="relative aspect-[3/4] bg-slate-200 overflow-hidden rounded-xl">
+                  <div className="relative aspect-[3/4] bg-slate-900 border border-slate-800/80 overflow-hidden rounded-xl group-hover:border-slate-700/80 transition-colors">
                     {book.sampul_url ? (
                       <LazyImage src={book.sampul_url} alt={book.judul} />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">
+                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">
                         Tanpa Sampul
                       </div>
                     )}
@@ -387,20 +386,20 @@ export default function HomePage() {
                   <div className="pt-3 pb-1 px-1 flex flex-col flex-grow justify-between">
                     <div>
                       <div className="flex flex-wrap gap-1 mb-1.5">
-                        <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold bg-slate-900 text-white rounded">
+                        <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded">
                           {book.kategori || 'Umum'}
                         </span>
                         {book.topik && book.topik.slice(0, 2).map((t, idx) => (
-                          <span key={idx} className="inline-block px-1.5 py-0.5 text-[10px] font-normal bg-slate-100 text-slate-600 rounded border border-slate-200">
+                          <span key={idx} className="inline-block px-1.5 py-0.5 text-[10px] font-normal bg-slate-900 text-slate-400 rounded border border-slate-800">
                             {t}
                           </span>
                         ))}
                       </div>
-                      <h2 className="text-sm font-semibold text-slate-900 line-clamp-2 leading-snug">
+                      <h2 className="text-sm font-semibold text-slate-100 line-clamp-2 leading-snug group-hover:text-cyan-400 transition-colors">
                         {book.judul}
                       </h2>
                     </div>
-                    <p className="text-xs text-slate-500 mt-1 truncate">
+                    <p className="text-xs text-slate-400 mt-1 truncate">
                       {book.penulis || 'Anonim'}
                     </p>
                   </div>
@@ -413,7 +412,7 @@ export default function HomePage() {
         {/* Indikator Loading Bawah */}
         {loading && (
           <div className="w-full flex justify-center py-8">
-            <Loader2 className="h-6 w-6 text-slate-400 animate-spin" />
+            <Loader2 className="h-6 w-6 text-cyan-400 animate-spin" />
           </div>
         )}
         

@@ -229,8 +229,8 @@ export default function Sidebar() {
 
   if (loading || !user) {
     return (
-      <div className="w-20 bg-[#F5F5F5] h-screen fixed flex items-center justify-center">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+      <div className="w-20 bg-[#0b0c10] h-screen fixed flex items-center justify-center">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-400" />
       </div>
     );
   }
@@ -239,27 +239,27 @@ export default function Sidebar() {
     <aside 
       onMouseEnter={handleSidebarMouseEnter}
       onMouseLeave={handleSidebarMouseLeave}
-      className={`hidden md:flex bg-[#F5F5F5] flex-col fixed h-screen top-0 left-0 z-50 transition-[width] duration-300 ease-in-out overflow-hidden select-none will-change-[width]
+      className={`hidden md:flex bg-[#0b0c10] text-slate-100 flex-col fixed h-screen top-0 left-0 z-50 transition-[width] duration-300 ease-in-out overflow-hidden select-none will-change-[width]
         ${isHovered ? 'w-72' : 'w-20'}`}
       style={isGrabbing ? { cursor: 'grabbing' } : {}}
     >
       <div className="w-full flex flex-col justify-between h-full shrink-0">
         
         {/* IDENTITAS APLIKASI */}
-        <div className="flex items-center px-5 pt-5 pb-3 w-full bg-[#F5F5F5] shrink-0">
+        <div className="flex items-center px-5 pt-5 pb-3 w-full bg-[#0b0c10] shrink-0">
           <div className="w-10 flex justify-center shrink-0">
             <img src="/logo3.png" alt="Logo" className="h-10 w-auto object-contain" />
           </div>
           <div className={`flex flex-col ml-3 transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-            <h1 className="text-sm font-black text-slate-900 tracking-tight uppercase leading-tight">Lubangsa</h1>
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider -mt-0.5">Library</p>
+            <h1 className="text-sm font-black text-slate-100 tracking-tight uppercase leading-tight">Lubangsa</h1>
+            <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider -mt-0.5">Library</p>
           </div>
         </div>
 
         {/* KOTAK PENCARIAN NAVIGASI */}
-        <div className={`px-5 pb-3 shrink-0 h-9 relative z-10 transition-all duration-300 ease-in-out ${isHovered ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'}`}>
+        <div className={`px-5 pt-3 pb-3 shrink-0 h-12 relative z-10 transition-all duration-300 ease-in-out ${isHovered ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'}`}>
           <div className="relative flex items-center w-full">
-            <FontAwesomeIcon icon={['fas', 'magnifying-glass']} className="absolute left-2.5 w-3 h-3 text-slate-400 pointer-events-none" />
+            <FontAwesomeIcon icon={['fas', 'magnifying-glass']} className="absolute left-2.5 w-3 h-3 text-slate-500 pointer-events-none" />
             <input
               ref={searchInputRef}
               type="text"
@@ -267,12 +267,12 @@ export default function Sidebar() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              className="w-full h-7 pl-8 pr-2.5 bg-slate-200/50 focus:bg-white text-xs font-medium rounded-lg text-slate-800 placeholder-slate-400 outline-none border border-transparent focus:border-slate-300 transition-all duration-150"
+              className="w-full h-8 pl-8 pr-2.5 bg-slate-950/80 focus:bg-slate-900 text-xs font-medium rounded-lg text-slate-100 placeholder-slate-500 outline-none transition-all duration-150"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3.5 text-[10px] text-slate-400 hover:text-slate-600 font-bold"
+                className="absolute right-3 text-[10px] text-slate-500 hover:text-slate-300 font-bold"
               >
                 ✕
               </button>
@@ -299,7 +299,7 @@ export default function Sidebar() {
                     
                     {/* Nama Group */}
                     <div className="h-4 flex items-center px-3">
-                      <span className={`text-[10px] font-extrabold tracking-widest text-slate-400 uppercase transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                      <span className={`text-[10px] font-extrabold tracking-widest text-slate-500 uppercase transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
                         {group.groupName}
                       </span>
                     </div>
@@ -321,10 +321,10 @@ export default function Sidebar() {
                           onMouseEnter={() => setActiveIndex(currentGlobalIndex)}
                           className={`group flex items-center px-3 py-2.5 rounded-xl text-[13px] font-bold uppercase tracking-wider transition-all duration-150 ease-in-out w-full
                             ${isActive 
-                              ? 'text-blue-600' 
+                              ? 'bg-cyan-500/10 text-cyan-400' 
                               : isKeyboardSelected
-                              ? 'bg-slate-300/70 text-slate-900 outline-none ring-2 ring-slate-300' 
-                              : 'text-slate-600 hover:bg-slate-200/60 hover:text-slate-900'
+                              ? 'bg-slate-900 text-slate-100 outline-none' 
+                              : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-100'
                             }`}
                           style={isGrabbing ? { cursor: 'grabbing' } : {}}
                         >
@@ -332,7 +332,7 @@ export default function Sidebar() {
                             <FontAwesomeIcon 
                               icon={formatFAIcon(item.icon)} 
                               className={`w-4.5 h-4.5 transition-colors duration-150
-                                ${isActive ? 'text-blue-600' : isKeyboardSelected ? 'text-slate-700' : 'text-slate-400 group-hover:text-slate-600'}`} 
+                                ${isActive ? 'text-cyan-400' : isKeyboardSelected ? 'text-slate-200' : 'text-slate-500 group-hover:text-slate-300'}`} 
                             />
                           </div>
                           <span className={`ml-3 transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
@@ -345,7 +345,7 @@ export default function Sidebar() {
                 ));
               })()
             ) : (
-              <div className={`text-center py-4 text-xs text-slate-400 font-medium transition-all duration-300 ease-in-out ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+              <div className={`text-center py-4 text-xs text-slate-500 font-medium transition-all duration-300 ease-in-out ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
                 Menu tidak ditemukan
               </div>
             )}
@@ -353,28 +353,28 @@ export default function Sidebar() {
         </div>
 
         {/* INFORMASI PENGGUNA */}
-        <div className="p-3 bg-slate-200/30 shrink-0">
-          <div className={`bg-white rounded-xl transition-all duration-300 flex flex-col justify-between overflow-hidden w-full ${profileOpen ? 'h-28 p-2.5' : 'h-14 p-2'}`}>
+        <div className="p-3 bg-slate-950/60 shrink-0">
+          <div className={`bg-slate-900/90 rounded-xl transition-all duration-300 flex flex-col justify-between overflow-hidden w-full ${profileOpen ? 'h-28 p-2.5' : 'h-14 p-2'}`}>
             <div 
               onClick={() => !isGrabbing && setProfileOpen(!profileOpen)} 
               className="flex items-center justify-between cursor-pointer group select-none h-10 w-full"
               style={isGrabbing ? { cursor: 'grabbing' } : {}}
             >
               <div className="flex items-center w-full">
-                <div className="w-10 h-10 shrink-0 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-700 uppercase">
+                <div className="w-10 h-10 shrink-0 rounded-full bg-slate-950 flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
                   {user?.email?.substring(0, 2)}
                 </div>
                 <div className={`flex flex-col ml-3 transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-                  <span className="text-[11px] font-bold text-slate-800">@{user?.email?.split('@')[0]}</span>
-                  <span className="text-[9px] text-slate-400 font-medium">Pustakawan</span>
+                  <span className="text-[11px] font-bold text-slate-200">@{user?.email?.split('@')[0]}</span>
+                  <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wider">Pustakawan</span>
                 </div>
               </div>
-              <FontAwesomeIcon icon={faChevronUp} className={`w-3.5 h-3.5 text-slate-400 transition-all duration-300 shrink-0 ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'} ${profileOpen ? 'rotate-180' : 'rotate-0'}`} />
+              <FontAwesomeIcon icon={faChevronUp} className={`w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 transition-all duration-300 shrink-0 ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'} ${profileOpen ? 'rotate-180' : 'rotate-0'}`} />
             </div>
 
             {profileOpen && (
-              <button onClick={() => router.push('/')} className="w-full flex items-center justify-start gap-2 py-1.5 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-lg text-[9px] font-medium tracking-wide transition-colors border border-slate-200">
-                <FontAwesomeIcon icon={faArrowLeft} className="w-3 h-3 shrink-0" /> Kembali ke halaman utama
+              <button onClick={() => router.push('/')} className="w-full flex items-center justify-start gap-2 py-1.5 px-2.5 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg text-[9px] font-medium tracking-wide transition-colors">
+                <FontAwesomeIcon icon={faArrowLeft} className="w-3 h-3 shrink-0 text-cyan-400" /> Kembali ke halaman utama
               </button>
             )}
           </div>

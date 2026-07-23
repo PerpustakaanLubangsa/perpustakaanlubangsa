@@ -65,9 +65,9 @@ function LazyImage({ src, alt }: { src: string; alt: string }) {
   }, []);
 
   return (
-    <div ref={imgRef} className="w-full h-full bg-slate-200 relative overflow-hidden flex items-center justify-center">
+    <div ref={imgRef} className="w-full h-full bg-slate-900 relative overflow-hidden flex items-center justify-center">
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+        <div className="absolute inset-0 flex items-center justify-center text-slate-600">
           <ImageIcon className="h-8 w-8 stroke-[1.2]" />
         </div>
       )}
@@ -327,48 +327,52 @@ export default function BibliografiEditPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#F5F5F5] text-slate-800 p-4 sm:p-6 pb-24">
+    <main className="min-h-screen bg-[#0b0c10] text-slate-100 p-4 sm:p-6 pb-24">
       <div className="w-full max-w-7xl mx-auto flex flex-col">
         
+        {/* HEADER SECTION */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Manajemen Bibliografi</h1>
-            <p className="text-xs text-slate-500">Kelola, edit, dan perbarui katalog buku perpustakaan.</p>
+            <h1 className="text-xl font-black uppercase tracking-tight text-slate-100">Manajemen Bibliografi</h1>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">Kelola, edit, dan perbarui katalog buku perpustakaan.</p>
           </div>
           
+          {/* TOMBOL TAMBAH BUKU (TIMBUL + CURSOR POINTER) */}
           <button 
             onClick={handleAddBook}
-            className="inline-flex items-center justify-center gap-2 h-11 px-4 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-sm"
+            className="inline-flex items-center justify-center gap-2 h-11 px-5 text-xs font-extrabold uppercase tracking-wider text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 rounded-xl transition-all duration-200 border border-cyan-500/30 shadow-lg shadow-cyan-500/10 hover:shadow-cyan-500/20 cursor-pointer active:translate-y-0.5"
           >
             <Plus className="h-4 w-4" />
             Tambah Buku
           </button>
         </div>
 
+        {/* SEARCH BAR (TIMBUL) */}
         <div className="relative w-full mb-8">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Cari bibliografi berdasarkan judul, penulis, atau ISBN..."
-            style={{ backgroundColor: '#E5E5E0' }}
-            className="w-full h-11 pl-11 pr-4 text-sm border border-transparent rounded-xl text-slate-800 placeholder-slate-500 focus:outline-none focus:border-transparent transition-all duration-200"
+            className="w-full h-11 pl-11 pr-4 text-xs font-medium bg-slate-950 text-slate-100 placeholder-slate-500 rounded-xl outline-none border border-slate-800/80 shadow-lg shadow-black/40 focus:bg-slate-900 focus:border-cyan-500/50 focus:shadow-cyan-500/10 transition-all duration-200"
           />
           <Search className="absolute left-4 top-3.5 h-4 w-4 text-slate-500 pointer-events-none" />
         </div>
 
+        {/* STATE KOSONG */}
         {!loading && books.length === 0 && (
           <div className="py-20 flex flex-col items-center justify-center text-center px-4">
-            <div className="p-4 bg-slate-200 rounded-full text-slate-400 mb-4">
+            <div className="p-4 bg-slate-950 rounded-full text-slate-500 mb-4 border border-slate-800 shadow-md">
               <BookX className="h-10 w-10 stroke-[1.5]" />
             </div>
-            <h3 className="text-base font-semibold text-slate-800 mb-1">Tidak Ada Koleksi</h3>
+            <h3 className="text-sm font-bold text-slate-200 mb-1">Tidak Ada Koleksi</h3>
             <p className="text-xs text-slate-500 max-w-sm">
               Tidak ditemukan data bibliografi yang cocok dengan pencarian Anda.
             </p>
           </div>
         )}
 
+        {/* GRID KATALOG BUKU */}
         {books.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
             {books.map((book, index) => {
@@ -379,28 +383,30 @@ export default function BibliografiEditPage() {
                   key={book.id}
                   ref={isLastElement ? lastBookElementRef : null}
                   onClick={() => setSelectedBook(book)}
-                  className="bg-[#F5F5F5] rounded-xl overflow-hidden flex flex-col transition-all duration-200 group relative cursor-pointer"
+                  className="bg-transparent flex flex-col transition-all duration-200 group relative cursor-pointer"
                 >
-                  <div className="relative aspect-[3/4] bg-slate-200 overflow-hidden rounded-t-xl">
+                  {/* KOTAK SAMPUL DENGAN SUDUT BULAT */}
+                  <div className="relative aspect-[3/4] bg-slate-900 overflow-hidden rounded-2xl border border-slate-800/80 shadow-md group-hover:border-slate-700 transition-all">
                     {book.sampul_url ? (
                       <LazyImage src={book.sampul_url} alt={book.judul} />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-400">
+                      <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-slate-600">
                         Tanpa Sampul
                       </div>
                     )}
 
-                    <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-3 transition-opacity duration-200">
+                    {/* OVERLAY ACTION BUTTONS */}
+                    <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-3 transition-opacity duration-200">
                       <button
                         onClick={(e) => handleEditBook(e, book)}
-                        className="p-2.5 bg-white text-slate-800 rounded-xl shadow hover:bg-slate-50 hover:scale-105 transition-all"
+                        className="p-2.5 bg-slate-900 text-cyan-400 rounded-xl hover:bg-cyan-500/20 hover:scale-105 transition-all shadow-md cursor-pointer"
                         title="Edit Data"
                       >
                         <Edit3 className="h-4 w-4" />
                       </button>
                       <button
                         onClick={(e) => handleDeleteBook(e, book.id)}
-                        className="p-2.5 bg-red-600 text-white rounded-xl shadow hover:bg-red-700 hover:scale-105 transition-all"
+                        className="p-2.5 bg-slate-900 text-rose-400 rounded-xl hover:bg-rose-500/20 hover:scale-105 transition-all shadow-md cursor-pointer"
                         title="Hapus Buku"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -408,21 +414,22 @@ export default function BibliografiEditPage() {
                     </div>
                   </div>
 
-                  <div className="p-3 pt-4 flex flex-col flex-grow justify-between bg-[#F5F5F5] rounded-b-xl">
+                  {/* DETAIL INFORMASI BUKU */}
+                  <div className="pt-3.5 pb-1 flex flex-col flex-grow justify-between bg-transparent">
                     <div>
-                      <span className="inline-block px-1.5 py-0.5 text-[9px] font-semibold bg-slate-900 text-white rounded mb-1.5">
+                      <span className="inline-block px-2 py-0.5 text-[9px] font-black uppercase tracking-wider bg-cyan-500/10 text-cyan-400 rounded mb-2">
                         {book.kategori || 'Umum'}
                       </span>
-                      <h2 className="text-sm font-semibold text-slate-900 line-clamp-2 leading-snug">
+                      <h2 className="text-xs font-bold text-slate-100 line-clamp-2 leading-snug group-hover:text-cyan-400 transition-colors">
                         {book.judul}
                       </h2>
                     </div>
                     
-                    <div className="mt-2 pt-2 flex items-center justify-between">
-                      <p className="text-xs text-slate-500 truncate max-w-[70%]">
+                    <div className="mt-2.5 flex items-center justify-between">
+                      <p className="text-[11px] font-semibold text-slate-400 truncate max-w-[70%]">
                         {book.penulis || 'Anonim'}
                       </p>
-                      <p className="text-[10px] text-slate-400 font-medium tabular-nums">
+                      <p className="text-[10px] text-slate-500 font-bold tabular-nums">
                         {book.tahun_terbit || '-'}
                       </p>
                     </div>
@@ -435,7 +442,7 @@ export default function BibliografiEditPage() {
 
         {loading && (
           <div className="w-full flex justify-center py-8">
-            <Loader2 className="h-6 w-6 text-slate-400 animate-spin" />
+            <Loader2 className="h-6 w-6 text-cyan-400 animate-spin" />
           </div>
         )}
         
@@ -445,7 +452,7 @@ export default function BibliografiEditPage() {
           onClose={() => setSelectedBook(null)}
         />
 
-        {/* MENGIRIM PROPS DATA EKSEMPLAR SERTA HANDLER AKSI DATABASE KE MODAL FORM */}
+        {/* MODAL FORM EDIT / TAMBAH */}
         <BookFormModal
           isOpen={isFormOpen}
           bookToEdit={bookToEdit}
