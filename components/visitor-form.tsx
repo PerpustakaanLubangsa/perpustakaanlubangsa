@@ -41,6 +41,10 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
   const dropAnggotaRef = useRef<HTMLDivElement>(null);
   const dropBukuRef = useRef<HTMLDivElement>(null);
 
+  // Debounce Timer Ref
+  const namaTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const bukuTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Ambil list Kategori dari database saat component dimuat
   useEffect(() => {
     async function fetchKategori() {
@@ -50,7 +54,7 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
           .select('nama_kategori')
           .order('nama_kategori', { ascending: true });
         if (error) throw error;
-        if (data) setKategoriOptions(data.map(item => item.nama_kategori));
+        if (data) setKategoriOptions(data.map((item) => item.nama_kategori));
       } catch (err: any) {
         console.error('Gagal memuat kategori:', err.message);
       }
@@ -72,17 +76,20 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Logika Smart Search Nama
+  // Logika Smart Search Nama dengan pembersihan timer yang benar
   const handleNamaChange = (val: string) => {
     setNama(val);
-    setSelectedAnggota(null); 
+    setSelectedAnggota(null);
+
+    if (namaTimerRef.current) clearTimeout(namaTimerRef.current);
+
     if (val.trim().length < 2) {
       setAnggotaSuggestions([]);
       setShowAnggotaDrop(false);
       return;
     }
 
-    const timer = setTimeout(async () => {
+    namaTimerRef.current = setTimeout(async () => {
       const { data, error } = await supabase
         .from('anggota')
         .select('*')
@@ -94,21 +101,22 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
         setShowAnggotaDrop(data.length > 0);
       }
     }, 300);
-
-    return () => clearTimeout(timer);
   };
 
-  // Logika Smart Search Buku
+  // Logika Smart Search Buku dengan pembersihan timer yang benar
   const handleBukuChange = (val: string) => {
     setBuku(val);
-    setSelectedBuku(null); 
+    setSelectedBuku(null);
+
+    if (bukuTimerRef.current) clearTimeout(bukuTimerRef.current);
+
     if (val.trim().length < 2) {
       setBukuSuggestions([]);
       setShowBukuDrop(false);
       return;
     }
 
-    const timer = setTimeout(async () => {
+    bukuTimerRef.current = setTimeout(async () => {
       const { data, error } = await supabase
         .from('biblio')
         .select('*')
@@ -120,8 +128,6 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
         setShowBukuDrop(data.length > 0);
       }
     }, 300);
-
-    return () => clearTimeout(timer);
   };
 
   // Logika Validasi Sesi Waktu & Submit Form
@@ -140,7 +146,7 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
     try {
       const sekarang = new Date();
       const jamSekarang = sekarang.getHours();
-      
+
       let sesiHariIni = '';
       let tglMulaiCheck = '';
       let tglSelesaiCheck = '';
@@ -160,14 +166,14 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
           const besok = new Date(sekarang);
           besok.setDate(sekarang.getDate() + 1);
           const dateStringBesok = `${besok.getFullYear()}-${String(besok.getMonth() + 1).padStart(2, '0')}-${String(besok.getDate()).padStart(2, '0')}`;
-          
+
           tglMulaiCheck = new Date(`${dateString}T15:00:00`).toISOString();
           tglSelesaiCheck = new Date(`${dateStringBesok}T03:59:59`).toISOString();
         } else {
           const kemarin = new Date(sekarang);
           kemarin.setDate(sekarang.getDate() - 1);
           const dateStringKemarin = `${kemarin.getFullYear()}-${String(kemarin.getMonth() + 1).padStart(2, '0')}-${String(kemarin.getDate()).padStart(2, '0')}`;
-          
+
           tglMulaiCheck = new Date(`${dateStringKemarin}T15:00:00`).toISOString();
           tglSelesaiCheck = new Date(`${dateString}T03:59:59`).toISOString();
         }
@@ -201,13 +207,13 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
           judul_buku: buku.trim(),
           kategori: kategori,
           aktivitas: aktivitas,
-          tanggal_kunjungan: dateString
+          tanggal_kunjungan: dateString,
         }]);
 
       if (insertError) throw insertError;
 
       setSuccessMsg('Kunjungan berhasil disimpan!');
-      
+
       const savedMemberId = selectedAnggota.id;
 
       // Reset State Form
@@ -404,9 +410,8 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
         </div>
       </form>
 
-      {/* FOOTER ACTIONS (Ditarik ke Paling Bawah Card) */}
+      {/* FOOTER ACTIONS */}
       <div className="pt-4 space-y-2 border-t border-slate-800/80 mt-4">
-        {/* BUTTON SUBMIT */}
         <button
           type="submit"
           form="visitor-form"
@@ -426,7 +431,6 @@ export default function VisitorForm({ onSuccess }: VisitorFormProps) {
           )}
         </button>
 
-        {/* BUTTON LEADERBOARD */}
         <Link
           href="/leaderboard"
           className="w-full flex justify-center items-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold text-center text-slate-300 bg-slate-950 hover:bg-slate-800 hover:text-white border border-slate-800 active:scale-[0.98] transition-all cursor-pointer"

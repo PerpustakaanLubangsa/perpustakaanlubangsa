@@ -5,27 +5,24 @@ import Link from 'next/link';
 
 export default function LeftPanel() {
   return (
-    <div className="hidden md:flex md:w-1/2 lg:w-3/5 bg-slate-950 p-12 flex-col justify-between relative overflow-hidden select-none border-r border-slate-900">
+    /* PERUBAHAN:
+       1. Menghapus `border-r border-slate-900` agar garis batas tidak membentur lengkungan RightForm.
+       2. Mengubah `p-12` menjadi `p-12 md:pr-16` agar konten kiri tetap proporsional dan tidak terpotong oleh form kanan.
+    */
+    <div className="hidden md:flex md:w-1/2 lg:w-3/5 bg-slate-950 p-12 md:pr-16 flex-col justify-between relative overflow-hidden select-none">
       
       {/* ============================================================ */}
-      {/* BACKGROUND VIDEO (Overlay sudah dikurangi agar lebih terang) */}
+      {/* BACKGROUND IMAGE                                             */}
       {/* ============================================================ */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none opacity-40 mix-blend-lighten">
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <img
+          src="/bg.png"
+          alt="Background"
           className="w-full h-full object-cover"
-        >
-          <source src="/login-bg.mp4" type="video/mp4" />
-          Your browser does not support the video tag.
-        </video>
-        {/* Lapisan gradasi disamarkan agar video di belakangnya lebih terekspos */}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-slate-950/80" />
+        />
       </div>
 
-      {/* Grid Garis Tipis Halus di atas video */}
+      {/* Grid Garis Tipis Halus di atas gambar */}
       <div className="absolute inset-0 z-0 opacity-[0.02] bg-[linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] bg-[size:32px_32px]" />
 
       {/* ============================================================ */}
@@ -44,18 +41,6 @@ export default function LeftPanel() {
           </span>
         </div>
       </Link>
-
-      {/* ============================================================ */}
-      {/* KONTEN TENGAH                                                */}
-      {/* ============================================================ */}
-      <div className="relative z-10 flex flex-col items-center text-center space-y-3 my-auto max-w-sm mx-auto">
-        <h1 className="text-2xl font-black text-white leading-tight tracking-tight uppercase drop-shadow-md">
-          Otorisasi Akses <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">Pustakawan</span>
-        </h1>
-        <p className="text-[11px] text-slate-300 font-medium leading-relaxed max-w-[320px] mx-auto opacity-90 drop-shadow-sm">
-          Silakan masuk untuk mengelola pencatatan sirkulasi buku, validasi poin sanksi kunjungan, serta verifikasi karya tulis santri secara aman.
-        </p>
-      </div>
 
       {/* ============================================================ */}
       {/* FOOTER                                                       */}

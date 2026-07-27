@@ -1,73 +1,39 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { library } from '@fortawesome/fontawesome-svg-core';
-import { fas } from '@fortawesome/free-solid-svg-icons';
-import { faChevronUp, faArrowLeft } from '@fortawesome/free-solid-svg-icons';
+import { fas, faChevronUp, faArrowLeft, faRightFromBracket } from '@fortawesome/free-solid-svg-icons';
 
-library.add(fas);
+library.add(fas, faChevronUp, faArrowLeft, faRightFromBracket);
 
-// PERUBAHAN: Semua rute page_url kecuali 'Dashboard' dimasukkan ke sub-folder /dashboard
-const NAVIGATION_GROUPS = [
-  {
-    groupName: 'Utama',
-    items: [
-      { id: 1, label: 'Dashboard', icon: 'fa-solid fa-house-chimney', page_url: '/dashboard' },
-      { id: 2, label: 'Cari Buku', icon: 'fa-solid fa-magnifying-glass', page_url: '/dashboard/cari-buku' },
-    ]
-  },
-  {
-    groupName: 'Operasional',
-    items: [
-      { id: 3, label: 'Absensi', icon: 'fa-solid fa-calendar-check', page_url: '/dashboard/absensi' },
-      { id: 4, label: 'Data Pengunjung', icon: 'fa-solid fa-users-viewfinder', page_url: '/dashboard/data-pengunjung' },
-      { id: 13, label: 'Sirkulasi', icon: 'fa-solid fa-retweet', page_url: '/dashboard/sirkulasi' },
-      { id: 16, label: 'Peminjam', icon: 'fa-solid fa-list-ul', page_url: '/dashboard/daftar-peminjam' },
-      { id: 5, label: 'Manage Absen', icon: 'fa-solid fa-user-gear', page_url: '/dashboard/manajemen-absensi' },
-      { id: 6, label: 'Rekapitulasi', icon: 'fa-solid fa-chart-pie', page_url: '/dashboard/rekap' },
-    ]
-  },
-  {
-    groupName: 'Koleksi & Anggota',
-    items: [
-      { id: 10, label: 'Bibliografi', icon: 'fa-solid fa-book', page_url: '/dashboard/bibliografi' },
-      { id: 11, label: 'Manajemen Rak', icon: 'fa-solid fa-layer-group', page_url: '/dashboard/manajemen-rak' },
-      { id: 12, label: 'Kategori', icon: 'fa-solid fa-tags', page_url: '/dashboard/manajemen-kategori' },
-      { id: 14, label: 'Barcode', icon: 'fa-solid fa-barcode', page_url: '/dashboard/barcode' },
-      { id: 15, label: 'Label', icon: 'fa-solid fa-print', page_url: '/dashboard/label' },
-      { id: 17, label: 'Anggota', icon: 'fa-solid fa-users', page_url: '/dashboard/keanggotaan' },
-    ]
-  },
-  {
-    groupName: 'Audit Buku',
-    items: [
-      { id: 7, label: 'Scanner', icon: 'fa-solid fa-qrcode', page_url: '/dashboard/audit-scanner' },
-      { id: 8, label: 'Hasil Audit', icon: 'fa-solid fa-square-poll-vertical', page_url: '/dashboard/audit-hasil' },
-      { id: 9, label: 'Belum Audit', icon: 'fa-solid fa-folder-minus', page_url: '/dashboard/audit-belum' },
-    ]
-  },
-  {
-    groupName: 'Konten & Sistem',
-    items: [
-      { id: 18, label: 'Karya', icon: 'fa-solid fa-pen-nib', page_url: '/dashboard/karya' },
-      { id: 19, label: 'Admin Karya', icon: 'fa-solid fa-feather-pointed', page_url: '/dashboard/admin-karya' },
-      { id: 20, label: 'Poin Tambahan', icon: 'fa-solid fa-circle-dollar-to-slot', page_url: '/dashboard/poin' },
-      { id: 21, label: 'Registrasi Pustakawan', icon: 'fa-solid fa-shield-halved', page_url: '/dashboard/pendaftaran-pustakawan' },
-      { id: 22, label: 'Feedback', icon: 'fa-solid fa-comment-dots', page_url: '/dashboard/admin-feedback' },
-      { id: 23, label: 'Tentang', icon: 'fa-solid fa-circle-info', page_url: '/dashboard/about' },
-    ]
-  }
-];
+interface MenuItem {
+  id: number;
+  label: string;
+  icon: string;
+  page_url: string;
+  grup: string;
+  urutan: number;
+  role_akses?: string[];
+  is_active?: boolean;
+}
+
+interface NavGroup {
+  groupName: string;
+  items: MenuItem[];
+}
 
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [navigationGroups, setNavigationGroups] = useState<NavGroup[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+
   const [profileOpen, setProfileOpen] = useState(false);
   const [isGrabbing, setIsGrabbing] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -80,6 +46,7 @@ export default function Sidebar() {
   const itemRefs = useRef<{[key: string]: HTMLAnchorElement | null}>({});
   const dragInfo = useRef({ isDown: false, startY: 0, scrollTop: 0 });
 
+  // 1. Cek Autentikasi
   useEffect(() => {
     const checkUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -107,16 +74,93 @@ export default function Sidebar() {
     };
   }, [router]);
 
-  const filteredGroups = NAVIGATION_GROUPS.map((group) => {
-    const matchingItems = group.items.filter((item) =>
-      item.label.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    return { ...group, items: matchingItems };
-  }).filter((group) => group.items.length > 0);
+  // 2. Fetch Data Navigasi Supabase, Hapus .html & Format ke /dashboard/...
+  useEffect(() => {
+    const fetchNavMenu = async () => {
+      try {
+        setMenuLoading(true);
+        const { data, error } = await supabase
+          .from('navigasi_menu')
+          .select('*')
+          .eq('is_active', true)
+          .order('urutan', { ascending: true });
 
-  const flatFilteredItems = filteredGroups.reduce<any[]>((acc, group) => {
-    return [...acc, ...group.items];
+        if (error) {
+          console.error('Gagal mengambil data menu:', error.message);
+          return;
+        }
+
+        if (data) {
+          // Format data: Bersihkan .html dan pastikan diawali dengan /dashboard/
+          const cleanedData: MenuItem[] = data.map((item: MenuItem) => {
+            let rawUrl = item.page_url ? item.page_url.trim() : '';
+
+            // 1. Hapus ekstensi .html
+            rawUrl = rawUrl.replace(/\.html$/i, '');
+
+            // 2. Pastikan url memiliki format /dashboard/...
+            let formattedUrl = rawUrl;
+            if (!formattedUrl.startsWith('/dashboard') && !formattedUrl.startsWith('dashboard')) {
+              // Jika belum ada kata dashboard, tambahkan /dashboard/ di depannya
+              const cleanPath = formattedUrl.startsWith('/') ? formattedUrl : `/${formattedUrl}`;
+              formattedUrl = `/dashboard${cleanPath}`;
+            } else if (formattedUrl.startsWith('dashboard')) {
+              // Jika diawali "dashboard" tanpa slash di depan, tambahkan slash
+              formattedUrl = `/${formattedUrl}`;
+            }
+
+            // Rapikan jika ada double slash
+            formattedUrl = formattedUrl.replace(/\/+/g, '/');
+
+            return {
+              ...item,
+              page_url: formattedUrl,
+            };
+          });
+
+          const groupedMap = new Map<string, MenuItem[]>();
+
+          cleanedData.forEach((item: MenuItem) => {
+            const groupName = item.grup || 'Lainnya';
+            if (!groupedMap.has(groupName)) {
+              groupedMap.set(groupName, []);
+            }
+            groupedMap.get(groupName)?.push(item);
+          });
+
+          const formattedGroups: NavGroup[] = Array.from(groupedMap.entries()).map(
+            ([groupName, items]) => ({
+              groupName,
+              items: items.sort((a, b) => a.urutan - b.urutan)
+            })
+          );
+
+          setNavigationGroups(formattedGroups);
+        }
+      } catch (err) {
+        console.error('Terjadi kesalahan:', err);
+      } finally {
+        setMenuLoading(false);
+      }
+    };
+
+    fetchNavMenu();
   }, []);
+
+  const filteredGroups = useMemo(() => {
+    return navigationGroups.map((group) => {
+      const matchingItems = group.items.filter((item) =>
+        item.label.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      return { ...group, items: matchingItems };
+    }).filter((group) => group.items.length > 0);
+  }, [searchQuery, navigationGroups]);
+
+  const flatFilteredItems = useMemo(() => {
+    return filteredGroups.reduce<MenuItem[]>((acc, group) => {
+      return [...acc, ...group.items];
+    }, []);
+  }, [filteredGroups]);
 
   useEffect(() => {
     setActiveIndex(-1);
@@ -204,19 +248,6 @@ export default function Sidebar() {
     return ['fas', cleanName] as any;
   };
 
-  const handleAuxClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (e.button === 1) {
-      e.preventDefault();
-    }
-  };
-
-  const handleSidebarMouseEnter = () => {
-    setIsHovered(true);
-    setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 150);
-  };
-
   const handleSidebarMouseLeave = () => {
     setIsHovered(false);
     setSearchQuery('');
@@ -227,7 +258,13 @@ export default function Sidebar() {
     }
   };
 
-  if (loading || !user) {
+  // Fungsi Logout Supabase
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
+  if (loading || menuLoading || !user) {
     return (
       <div className="w-20 bg-[#0b0c10] h-screen fixed flex items-center justify-center">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-400" />
@@ -237,29 +274,29 @@ export default function Sidebar() {
 
   return (
     <aside 
-      onMouseEnter={handleSidebarMouseEnter}
+      onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleSidebarMouseLeave}
-      className={`hidden md:flex bg-[#0b0c10] text-slate-100 flex-col fixed h-screen top-0 left-0 z-50 transition-[width] duration-300 ease-in-out overflow-hidden select-none will-change-[width]
-        ${isHovered ? 'w-72' : 'w-20'}`}
+      className={`hidden md:flex bg-[#0b0c10] text-slate-100 flex-col fixed h-screen top-0 left-0 z-50 transition-all duration-300 ease-in-out select-none
+        ${isHovered ? 'w-72 shadow-2xl' : 'w-20'}`}
       style={isGrabbing ? { cursor: 'grabbing' } : {}}
     >
       <div className="w-full flex flex-col justify-between h-full shrink-0">
         
         {/* IDENTITAS APLIKASI */}
-        <div className="flex items-center px-5 pt-5 pb-3 w-full bg-[#0b0c10] shrink-0">
-          <div className="w-10 flex justify-center shrink-0">
-            <img src="/logo3.png" alt="Logo" className="h-10 w-auto object-contain" />
+        <div className="flex items-center h-16 w-full bg-[#0b0c10] shrink-0 relative overflow-hidden">
+          <div className="w-20 h-16 flex items-center justify-center shrink-0 absolute left-0 top-0">
+            <img src="/logo3.png" alt="Logo" className="h-9 w-auto object-contain" />
           </div>
-          <div className={`flex flex-col ml-3 transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+          <div className={`flex flex-col ml-20 transition-all duration-200 whitespace-nowrap ${isHovered ? 'opacity-100 delay-100' : 'opacity-0 pointer-events-none'}`}>
             <h1 className="text-sm font-black text-slate-100 tracking-tight uppercase leading-tight">Lubangsa</h1>
             <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider -mt-0.5">Library</p>
           </div>
         </div>
 
         {/* KOTAK PENCARIAN NAVIGASI */}
-        <div className={`px-5 pt-3 pb-3 shrink-0 h-12 relative z-10 transition-all duration-300 ease-in-out ${isHovered ? 'opacity-100 visible pointer-events-auto' : 'opacity-0 invisible pointer-events-none'}`}>
-          <div className="relative flex items-center w-full">
-            <FontAwesomeIcon icon={['fas', 'magnifying-glass']} className="absolute left-2.5 w-3 h-3 text-slate-500 pointer-events-none" />
+        <div className="px-3 py-2 shrink-0 h-12 relative z-10 w-full overflow-hidden">
+          <div className={`relative flex items-center w-full transition-all duration-200 ${isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <FontAwesomeIcon icon={['fas', 'magnifying-glass']} className="absolute left-3 w-3 h-3 text-slate-500 pointer-events-none" />
             <input
               ref={searchInputRef}
               type="text"
@@ -267,12 +304,12 @@ export default function Sidebar() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchKeyDown}
-              className="w-full h-8 pl-8 pr-2.5 bg-slate-950/80 focus:bg-slate-900 text-xs font-medium rounded-lg text-slate-100 placeholder-slate-500 outline-none transition-all duration-150"
+              className="w-full h-8 pl-8 pr-7 bg-slate-950 focus:bg-slate-900 text-xs font-medium rounded-lg text-slate-100 placeholder-slate-500 outline-none"
             />
             {searchQuery && (
               <button 
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 text-[10px] text-slate-500 hover:text-slate-300 font-bold"
+                className="absolute right-2.5 text-[10px] text-slate-500 hover:text-slate-300 font-bold"
               >
                 ✕
               </button>
@@ -287,10 +324,10 @@ export default function Sidebar() {
           onMouseLeave={handleMouseLeaveOrUp}
           onMouseUp={handleMouseLeaveOrUp}
           onMouseMove={handleMouseMove}
-          className="flex-1 overflow-y-auto overflow-x-hidden pb-6 transition-all duration-300 [overscroll-behavior:contain] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex-1 overflow-y-auto overflow-x-hidden py-2 [overscroll-behavior:contain] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={isGrabbing ? { cursor: 'grabbing' } : {}}
         >
-          <div className={`px-3 space-y-4 ${isGrabbing ? '[&_*]:!cursor-grabbing' : ''}`}>
+          <div className="px-2 space-y-4">
             {filteredGroups.length > 0 ? (
               (() => {
                 let globalItemIndex = 0;
@@ -298,8 +335,8 @@ export default function Sidebar() {
                   <div key={groupIdx} className="space-y-1">
                     
                     {/* Nama Group */}
-                    <div className="h-4 flex items-center px-3">
-                      <span className={`text-[10px] font-extrabold tracking-widest text-slate-500 uppercase transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+                    <div className="h-4 flex items-center overflow-hidden">
+                      <span className={`text-[10px] font-extrabold tracking-widest text-slate-500 uppercase whitespace-nowrap pl-4 transition-all duration-200 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                         {group.groupName}
                       </span>
                     </div>
@@ -316,26 +353,27 @@ export default function Sidebar() {
                           key={item.id}
                           ref={(el) => { itemRefs.current[item.id] = el; }}
                           href={item.page_url}
+                          title={!isHovered ? item.label : undefined}
                           onClick={(e) => isGrabbing && e.preventDefault()}
-                          onAuxClick={handleAuxClick}
                           onMouseEnter={() => setActiveIndex(currentGlobalIndex)}
-                          className={`group flex items-center px-3 py-2.5 rounded-xl text-[13px] font-bold uppercase tracking-wider transition-all duration-150 ease-in-out w-full
+                          className={`group relative flex items-center h-10 rounded-xl text-[13px] font-bold uppercase tracking-wider w-full overflow-hidden transition-colors duration-150
                             ${isActive 
                               ? 'bg-cyan-500/10 text-cyan-400' 
                               : isKeyboardSelected
                               ? 'bg-slate-900 text-slate-100 outline-none' 
-                              : 'text-slate-400 hover:bg-slate-900/80 hover:text-slate-100'
+                              : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100'
                             }`}
-                          style={isGrabbing ? { cursor: 'grabbing' } : {}}
                         >
-                          <div className="w-10 flex justify-center shrink-0">
+                          {/* Sumbu Ikon Terkunci Presisi */}
+                          <div className="w-16 h-10 flex items-center justify-center shrink-0 absolute left-0 top-0">
                             <FontAwesomeIcon 
                               icon={formatFAIcon(item.icon)} 
-                              className={`w-4.5 h-4.5 transition-colors duration-150
-                                ${isActive ? 'text-cyan-400' : isKeyboardSelected ? 'text-slate-200' : 'text-slate-500 group-hover:text-slate-300'}`} 
+                              className={`w-4 h-4 transition-colors duration-150 ${isActive ? 'text-cyan-400' : isKeyboardSelected ? 'text-slate-200' : 'text-slate-500 group-hover:text-slate-300'}`} 
                             />
                           </div>
-                          <span className={`ml-3 transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+
+                          {/* Teks Label Menu */}
+                          <span className={`ml-16 whitespace-nowrap transition-all duration-200 ${isHovered ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-2 pointer-events-none'}`}>
                             {item.label}
                           </span>
                         </Link>
@@ -345,38 +383,65 @@ export default function Sidebar() {
                 ));
               })()
             ) : (
-              <div className={`text-center py-4 text-xs text-slate-500 font-medium transition-all duration-300 ease-in-out ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
+              <div className={`text-center py-4 text-xs text-slate-500 font-medium transition-opacity duration-200 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
                 Menu tidak ditemukan
               </div>
             )}
           </div>
         </div>
 
-        {/* INFORMASI PENGGUNA */}
-        <div className="p-3 bg-slate-950/60 shrink-0">
-          <div className={`bg-slate-900/90 rounded-xl transition-all duration-300 flex flex-col justify-between overflow-hidden w-full ${profileOpen ? 'h-28 p-2.5' : 'h-14 p-2'}`}>
+        {/* INFORMASI PENGGUNA & TOMBOL AKSI */}
+        <div className="p-2 bg-[#0b0c10] shrink-0">
+          <div className={`bg-slate-900/50 rounded-xl flex flex-col justify-between overflow-hidden transition-all duration-200 w-full ${profileOpen && isHovered ? 'h-36 p-2 space-y-2' : 'h-12 p-1'}`}>
+            
+            {/* Kartu Profil Pengguna */}
             <div 
-              onClick={() => !isGrabbing && setProfileOpen(!profileOpen)} 
-              className="flex items-center justify-between cursor-pointer group select-none h-10 w-full"
-              style={isGrabbing ? { cursor: 'grabbing' } : {}}
+              onClick={() => !isGrabbing && isHovered && setProfileOpen(!profileOpen)} 
+              className={`relative flex items-center h-10 w-full rounded-lg transition-colors ${isHovered ? 'cursor-pointer hover:bg-slate-800/60' : 'cursor-default'}`}
             >
-              <div className="flex items-center w-full">
-                <div className="w-10 h-10 shrink-0 rounded-full bg-slate-950 flex items-center justify-center text-xs font-black text-cyan-300 uppercase">
+              {/* Avatar Profil */}
+              <div className="w-16 h-10 flex items-center justify-center shrink-0 absolute left-0 top-0">
+                <div className="w-8 h-8 rounded-full bg-slate-950 flex items-center justify-center text-[11px] font-black text-cyan-300 uppercase">
                   {user?.email?.substring(0, 2)}
                 </div>
-                <div className={`flex flex-col ml-3 transition-all duration-300 ease-in-out whitespace-nowrap ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'}`}>
-                  <span className="text-[11px] font-bold text-slate-200">@{user?.email?.split('@')[0]}</span>
-                  <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wider">Pustakawan</span>
-                </div>
               </div>
-              <FontAwesomeIcon icon={faChevronUp} className={`w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 transition-all duration-300 shrink-0 ${isHovered ? 'opacity-100 visible' : 'opacity-0 invisible'} ${profileOpen ? 'rotate-180' : 'rotate-0'}`} />
+
+              {/* Teks Profil Pengguna */}
+              <div className={`flex flex-col ml-16 whitespace-nowrap transition-all duration-200 ${isHovered ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                <span className="text-[11px] font-bold text-slate-200 leading-tight">@{user?.email?.split('@')[0]}</span>
+                <span className="text-[9px] text-cyan-400 font-semibold uppercase tracking-wider">Pustakawan</span>
+              </div>
+
+              {/* Ikon Dropdown Chevron */}
+              <FontAwesomeIcon 
+                icon={faChevronUp} 
+                className={`absolute right-3 w-3 h-3 text-slate-500 transition-all duration-200 ${isHovered ? 'opacity-100' : 'opacity-0'} ${profileOpen ? 'rotate-180' : 'rotate-0'}`} 
+              />
             </div>
 
-            {profileOpen && (
-              <button onClick={() => router.push('/')} className="w-full flex items-center justify-start gap-2 py-1.5 px-2.5 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 rounded-lg text-[9px] font-medium tracking-wide transition-colors">
-                <FontAwesomeIcon icon={faArrowLeft} className="w-3 h-3 shrink-0 text-cyan-400" /> Kembali ke halaman utama
-              </button>
+            {/* Tombol Aksi saat Profil Terbuka */}
+            {profileOpen && isHovered && (
+              <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-800/80">
+                {/* 1. Tombol Kembali ke Halaman Utama */}
+                <button 
+                  onClick={() => router.push('/')} 
+                  className="w-full flex items-center justify-start gap-2.5 py-2 px-3 bg-slate-950 hover:bg-slate-800 text-slate-200 hover:text-white rounded-lg text-xs font-semibold tracking-wide transition-colors border border-slate-800/60"
+                >
+                  <FontAwesomeIcon icon={faArrowLeft} className="w-3.5 h-3.5 shrink-0 text-cyan-400" /> 
+                  <span>Halaman Utama</span>
+                </button>
+
+                {/* 2. Tombol Logout */}
+                <button 
+                  onClick={handleLogout} 
+                  className="w-full flex items-center justify-start gap-2.5 py-2 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-lg text-xs font-semibold tracking-wide transition-colors border border-red-500/20"
+                >
+                  <FontAwesomeIcon icon={faRightFromBracket} className="w-3.5 h-3.5 shrink-0 text-red-400" /> 
+                  <span>Keluar / Logout</span>
+                </button>
+              </div>
             )}
+
           </div>
         </div>
 
