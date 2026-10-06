@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Loader2, BookX, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import BookDetailModal from '@/components/book-detail-modal'; 
+import BookDetailModal from '@/app/components/book-detail-modal'; 
 
 // Inisialisasi Supabase Client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
