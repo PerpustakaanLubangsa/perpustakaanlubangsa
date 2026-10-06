@@ -56,9 +56,12 @@ const LazyImage = memo(function LazyImage({ src, alt }: { src: string; alt: stri
   }, []);
 
   return (
-    <div ref={imgRef} className="w-full h-full bg-slate-200 relative overflow-hidden flex items-center justify-center">
+    <div
+      ref={imgRef}
+      className="w-full h-full bg-blue-100 relative overflow-hidden flex items-center justify-center"
+    >
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+        <div className="absolute inset-0 flex items-center justify-center text-blue-300 animate-pulse">
           <ImageIcon className="h-8 w-8 stroke-[1.2]" />
         </div>
       )}
@@ -69,7 +72,7 @@ const LazyImage = memo(function LazyImage({ src, alt }: { src: string; alt: stri
           alt={alt}
           loading="lazy"
           onLoad={() => setIsLoaded(true)}
-          className={`w-full h-full object-cover transition-opacity duration-200 ease-out ${
+          className={`w-full h-full object-cover transition-opacity duration-300 ease-out ${
             isLoaded ? 'opacity-100' : 'opacity-0'
           }`}
         />
@@ -86,45 +89,55 @@ const BookCard = memo(
         <div
           ref={ref}
           onClick={onClick}
-          className="flex flex-col cursor-pointer transition-transform duration-200 hover:-translate-y-1 group bg-transparent border-none shadow-none will-change-transform"
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onClick();
+            }
+          }}
+          aria-label={`Buka detail buku ${book.judul}`}
+          className="group flex flex-col cursor-pointer rounded-2xl bg-white border border-slate-200 p-2.5 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-blue-300 hover:shadow-lg hover:shadow-blue-900/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 will-change-transform"
         >
           {/* Container Cover Buku */}
-          <div className="relative aspect-[3/4.2] bg-slate-200 rounded-xl overflow-hidden mb-3 shadow-md shadow-slate-300/70 transition-shadow duration-200">
+          <div className="relative aspect-[3/4.2] bg-blue-100 rounded-xl overflow-hidden mb-3 ring-1 ring-slate-900/5">
             {book.sampul_url ? (
               <LazyImage src={book.sampul_url} alt={book.judul} />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 p-4 text-center">
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-xs font-medium text-blue-400 p-4 text-center bg-gradient-to-br from-blue-50 to-blue-100">
+                <ImageIcon className="h-7 w-7 stroke-[1.2]" />
                 Tanpa Sampul
               </div>
             )}
 
             {/* Overlay Buka Detail */}
-            <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col items-center justify-center gap-2 p-3">
-              <BookOpenText className="w-8 h-8 text-white/90" strokeWidth={1.2} />
-              <span className="text-[11px] font-semibold text-white tracking-wider uppercase bg-black/70 px-2.5 py-1 rounded-full border border-white/20">
+            <div className="absolute inset-0 bg-gradient-to-t from-blue-950/80 via-blue-900/50 to-blue-900/20 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-200 flex flex-col items-center justify-center gap-2 p-3">
+              <BookOpenText className="w-8 h-8 text-white" strokeWidth={1.4} />
+              <span className="text-[11px] font-semibold text-white tracking-wider uppercase bg-blue-600 px-3 py-1 rounded-full shadow-md">
                 Buka Detail
               </span>
             </div>
           </div>
 
           {/* Informasi Buku */}
-          <div className="px-1 flex flex-col flex-grow justify-between">
+          <div className="px-1 pb-1 flex flex-col flex-grow justify-between">
             <div>
-              <div className="flex flex-wrap gap-1 mb-2">
-                <span className="inline-block px-1.5 py-0.5 text-[9px] font-semibold bg-slate-200 text-slate-700 rounded tracking-wider uppercase">
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                <span className="inline-block px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 rounded-md tracking-wide uppercase">
                   {book.kategori || 'Umum'}
                 </span>
                 {book.topik && book.topik[0] && (
-                  <span className="inline-block px-1.5 py-0.5 text-[9px] font-normal bg-white text-slate-500 rounded border border-slate-200 truncate max-w-[90px]">
+                  <span className="inline-block px-2 py-0.5 text-[10px] font-medium bg-white text-slate-600 rounded-md border border-slate-200 truncate max-w-[90px]">
                     {book.topik[0]}
                   </span>
                 )}
               </div>
-              <h2 className="text-xs sm:text-sm font-semibold text-slate-900 line-clamp-2 leading-snug group-hover:text-black">
+              <h2 className="text-sm font-semibold text-slate-900 line-clamp-2 leading-snug tracking-tight transition-colors group-hover:text-blue-700">
                 {book.judul}
               </h2>
             </div>
-            <p className="text-xs text-slate-500 mt-1.5 truncate font-medium">
+            <p className="text-xs sm:text-[13px] text-slate-600 mt-1.5 truncate font-medium">
               {book.penulis || 'Anonim'}
             </p>
           </div>
@@ -302,7 +315,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 antialiased">
+    <main className="min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white text-slate-900 antialiased">
       {/* --- HEADER + HERO + PENCARIAN --- */}
       <HeroSearch
         categories={categories}
@@ -318,35 +331,39 @@ export default function HomePage() {
       {/* TODO: panel/modal "Catat Kunjungan" ditampilkan di sini saat isVisitorOpen === true */}
 
       {/* --- KATALOG BUKU --- */}
-      <div className="w-full max-w-7xl mx-auto px-4 pt-10 pb-12">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 pt-12 pb-16">
         {/* Teks Status Pencarian */}
         {!loading && currentSearchedTerm && books.length > 0 && (
-          <div className="mb-6 pb-2 border-b border-slate-200">
-            <h2 className="text-lg font-medium text-slate-600">
-              Hasil pencarian &ldquo;<span className="text-slate-900 font-semibold">{currentSearchedTerm}</span>&rdquo;
+          <div className="mb-8 pb-3 border-b border-blue-100">
+            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-slate-700">
+              Hasil pencarian &ldquo;
+              <span className="text-blue-700">{currentSearchedTerm}</span>&rdquo;
             </h2>
-            <p className="text-xs text-slate-500 mt-0.5">Ditemukan {books.length} koleksi</p>
+            <p className="text-sm text-slate-600 mt-1">
+              Ditemukan <span className="font-semibold text-blue-700">{books.length}</span> koleksi
+            </p>
           </div>
         )}
 
         {/* Kondisi Jika Buku Tidak Ditemukan */}
         {!loading && books.length === 0 && (
-          <div className="py-16 flex flex-col items-center justify-center text-center px-4 bg-white rounded-2xl border border-slate-200">
-            <div className="p-3 bg-slate-100 rounded-full text-slate-400 mb-4">
-              <BookX className="h-10 w-10 stroke-[1.2]" />
+          <div className="py-20 flex flex-col items-center justify-center text-center px-6 bg-white rounded-3xl border border-blue-100 shadow-sm shadow-blue-900/5">
+            <div className="p-4 bg-blue-50 rounded-full text-blue-500 mb-5 ring-8 ring-blue-50/60">
+              <BookX className="h-10 w-10 stroke-[1.4]" />
             </div>
 
-            <h3 className="text-lg font-semibold text-slate-900 mb-1.5 tracking-tight">
+            <h3 className="text-xl font-semibold text-slate-900 mb-2 tracking-tight">
               {currentSearchedTerm ? (
                 <>
-                  Tidak ditemukan hasil pencarian &ldquo;<span className="text-slate-600">{currentSearchedTerm}</span>&rdquo;
+                  Tidak ditemukan hasil pencarian &ldquo;
+                  <span className="text-blue-700">{currentSearchedTerm}</span>&rdquo;
                 </>
               ) : (
                 'Buku Tidak Ditemukan'
               )}
             </h3>
 
-            <p className="text-xs text-slate-500 max-w-md leading-relaxed">
+            <p className="text-sm text-slate-600 max-w-md leading-relaxed">
               {currentSearchedTerm
                 ? 'Coba periksa kembali ejaan kata kunci Anda atau gunakan istilah yang lebih umum.'
                 : 'Kami tidak dapat menemukan koleksi buku dalam kategori ini saat ini.'}
@@ -356,7 +373,7 @@ export default function HomePage() {
 
         {/* Grid Katalog Buku */}
         {books.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-10">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-5">
             {books.map((book, index) => {
               const isLastElement = books.length === index + 1;
               return (
@@ -373,8 +390,9 @@ export default function HomePage() {
 
         {/* Indikator Loading Bawah */}
         {loading && (
-          <div className="w-full flex justify-center py-12">
-            <Loader2 className="h-8 w-8 text-slate-400 animate-spin" />
+          <div className="w-full flex flex-col items-center gap-2 py-12">
+            <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+            <span className="text-sm font-medium text-slate-600">Memuat koleksi...</span>
           </div>
         )}
 
