@@ -4,14 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
-import { createClient } from '@supabase/supabase-js'; // Sesuaikan import client Supabase kamu
+import { supabase } from '@/lib/supabase'; // Gunakan instance terpusat dari lib/supabase
 
 library.add(fas);
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export interface MemberResult {
   id: string;
@@ -57,27 +52,99 @@ export default function SmartSearchInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Reset indeks sorotan setiap kali daftar hasil pencarian berubah
   useEffect(() => {
     setSelectedIndex(-1);
   }, [memberSuggestions, bookSuggestions]);
 
-  // Fokus kembali ke input saat status anggota berubah
   useEffect(() => {
     inputRef.current?.focus();
   }, [selectedMember]);
 
-  // Auto-scroll ke item yang sedang disorot menggunakan tombol panah (jika diperlukan container luar)
   useEffect(() => {
     if (selectedIndex >= 0 && dropdownRef.current) {
-      const activeElement = dropdownRef.current.children[selectedIndex + (isLoading ? 1 : 0)] as HTMLElement;
+      const activeElement = dropdownRef.current.children[
+        selectedIndex + (isLoading ? 1 : 0)
+      ] as HTMLElement;
       if (activeElement) {
         activeElement.scrollIntoView({ block: 'nearest' });
       }
     }
   }, [selectedIndex, isLoading]);
 
-  // Handler Navigasi Keyboard (Panah Atas/Bawah, Enter, ESC)
+  // Handle Pemilihan Anggota + Cek apakah anggota memiliki pinjaman aktif
+  const handleSelectMember = async (member: MemberResult) => {
+    setIsLoading(true);
+    try {
+      // Cek apakah ada transaksi sirkulasi aktif untuk anggota ini
+      const { data: activeLoan, error } = await supabase
+        .from('sirkulasi')
+        .select(`
+          id,
+          kode_eksemplar,
+          judul_buku,
+          penulis,
+          biblio_id,
+          eksemplar (
+            id,
+            status,
+            lokasi_rak
+          )
+        `)
+        .eq('nis', member.nis)
+        .eq('status', 'DIPINJAM')
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error checking active loan:', error);
+      }
+
+      onSelectMember(member);
+      setQuery('');
+      setMemberSuggestions([]);
+      setSelectedIndex(-1);
+
+      // Jika anggota sedang meminjam buku, otomatis set buku untuk langsung tampil di ResultCard
+      if (activeLoan) {
+        // Safe casting/handling jika data eksemplar berupa object atau array
+        const eksemplarData = Array.isArray(activeLoan.eksemplar)
+          ? activeLoan.eksemplar[0]
+          : activeLoan.eksemplar;
+
+        const activeBook: BookSearchResult = {
+          id: eksemplarData?.id ? String(eksemplarData.id) : '',
+          biblio_id: activeLoan.biblio_id || '',
+          barcode: activeLoan.kode_eksemplar,
+          title: activeLoan.judul_buku,
+          author: activeLoan.penulis || 'Anonim',
+          status: eksemplarData?.status || 'Dipinjam',
+          lokasi_rak: eksemplarData?.lokasi_rak || undefined,
+        };
+        onSelectBook(activeBook);
+      }
+    } catch (err) {
+      console.error('Error handling member selection:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handle Pemilihan Buku + Validasi Status Buku
+  const handleSelectBook = (book: BookSearchResult) => {
+    const isAvailable =
+      book.status?.toLowerCase() === 'tersedia' ||
+      book.status?.toLowerCase() === 'available';
+
+    if (!isAvailable) {
+      alert(`Buku "${book.title}" tidak dapat dipilih karena statusnya saat ini: ${book.status}`);
+      return;
+    }
+
+    onSelectBook(book);
+    setQuery('');
+    setBookSuggestions([]);
+    setSelectedIndex(-1);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const listLength = !selectedMember ? memberSuggestions.length : bookSuggestions.length;
 
@@ -111,21 +178,7 @@ export default function SmartSearchInput({
     }
   };
 
-  const handleSelectMember = (member: MemberResult) => {
-    onSelectMember(member);
-    setQuery('');
-    setMemberSuggestions([]);
-    setSelectedIndex(-1);
-  };
-
-  const handleSelectBook = (book: BookSearchResult) => {
-    onSelectBook(book);
-    setQuery('');
-    setBookSuggestions([]);
-    setSelectedIndex(-1);
-  };
-
-  // Query Pencarian ke Database Supabase
+  // Fetch Pencarian ke Supabase
   useEffect(() => {
     if (!query.trim()) {
       setMemberSuggestions([]);
@@ -137,21 +190,17 @@ export default function SmartSearchInput({
       setIsLoading(true);
       try {
         if (!selectedMember) {
-          // --- 1. CARI ANGGOTA (Tabel 'anggota') ---
           const { data, error } = await supabase
             .from('anggota')
             .select('id, nis, nama, jenjang, organisasi, kamar, role, rank, foto')
             .or(`nama.ilike.%${query}%,nis.ilike.%${query}%`)
             .limit(8);
 
-          if (error) {
-            console.error('Supabase Anggota Error:', error.message || error);
-            throw error;
-          }
+          if (error) throw error;
 
           if (data) {
             const mappedMembers: MemberResult[] = data.map((m: any) => ({
-              id: m.id,
+              id: String(m.id),
               nis: m.nis,
               nama: m.nama,
               jenjang: m.jenjang,
@@ -164,7 +213,6 @@ export default function SmartSearchInput({
             setMemberSuggestions(mappedMembers);
           }
         } else {
-          // --- 2. CARI BUKU (Tabel 'eksemplar' & 'biblio') ---
           const { data: matchedBiblios } = await supabase
             .from('biblio')
             .select('id')
@@ -194,27 +242,27 @@ export default function SmartSearchInput({
             .or(orConditions)
             .limit(8);
 
-          if (error) {
-            console.error('Supabase Eksemplar Error:', error.message || error);
-            throw error;
-          }
+          if (error) throw error;
 
           if (data) {
-            const mappedBooks: BookSearchResult[] = data.map((item: any) => ({
-              id: item.id,
-              biblio_id: item.biblio_id,
-              barcode: item.kode,
-              title: item.biblio?.judul || 'Tanpa Judul',
-              author: item.biblio?.penulis || 'Anonim',
-              status: item.status || 'Tersedia',
-              lokasi_rak: item.lokasi_rak || undefined,
-            }));
+            const mappedBooks: BookSearchResult[] = data.map((item: any) => {
+              const biblioInfo = Array.isArray(item.biblio) ? item.biblio[0] : item.biblio;
+              return {
+                id: String(item.id),
+                biblio_id: String(item.biblio_id),
+                barcode: item.kode,
+                title: biblioInfo?.judul || 'Tanpa Judul',
+                author: biblioInfo?.penulis || 'Anonim',
+                status: item.status || 'Tersedia',
+                lokasi_rak: item.lokasi_rak || undefined,
+              };
+            });
 
             setBookSuggestions(mappedBooks);
           }
         }
       } catch (err: any) {
-        console.error('Error fetching search results:', err?.message || JSON.stringify(err) || err);
+        console.error('Error fetching search results:', err?.message || err);
       } finally {
         setIsLoading(false);
       }
@@ -229,21 +277,19 @@ export default function SmartSearchInput({
 
   return (
     <div className="relative w-full">
-      {/* Dropdown Hasil Pencarian (Melayang Ke Atas - Tanpa Batasan Tinggi) */}
       {!disabled && (memberSuggestions.length > 0 || bookSuggestions.length > 0 || isLoading) && (
         <div
           ref={dropdownRef}
-          className="absolute bottom-full left-0 right-0 mb-2 bg-slate-950/95 backdrop-blur-md border border-slate-800 rounded-2xl p-2 shadow-2xl z-50"
+          className="absolute bottom-full left-0 right-0 mb-2 bg-slate-950/95 backdrop-blur-md border border-slate-800 rounded-2xl p-2 shadow-2xl z-50 max-h-72 overflow-y-auto"
         >
-          {/* Indicator Loading */}
           {isLoading && (
             <div className="p-3 text-center text-xs text-cyan-400 animate-pulse flex items-center justify-center gap-2">
               <FontAwesomeIcon icon={['fas', 'spinner']} className="animate-spin" />
-              <span>Mencari data...</span>
+              <span>Memproses data...</span>
             </div>
           )}
 
-          {/* Hasil Pencarian Anggota */}
+          {/* List Anggota */}
           {!selectedMember &&
             !isLoading &&
             memberSuggestions.map((m, index) => {
@@ -282,19 +328,25 @@ export default function SmartSearchInput({
               );
             })}
 
-          {/* Hasil Pencarian Buku */}
+          {/* List Buku */}
           {selectedMember &&
             !isLoading &&
             bookSuggestions.map((b, index) => {
               const isSelected = index === selectedIndex;
+              const isAvailable =
+                b.status?.toLowerCase() === 'tersedia' ||
+                b.status?.toLowerCase() === 'available';
+
               return (
                 <div
                   key={b.id}
                   onClick={() => handleSelectBook(b)}
-                  className={`p-2.5 rounded-xl cursor-pointer flex justify-between items-center text-xs transition-colors my-0.5 ${
-                    isSelected
-                      ? 'bg-cyan-500/30 border border-cyan-500/50 text-white'
-                      : 'hover:bg-cyan-500/20 text-slate-100'
+                  className={`p-2.5 rounded-xl flex justify-between items-center text-xs transition-colors my-0.5 ${
+                    !isAvailable
+                      ? 'opacity-50 cursor-not-allowed bg-slate-900/40'
+                      : isSelected
+                      ? 'bg-cyan-500/30 border border-cyan-500/50 text-white cursor-pointer'
+                      : 'hover:bg-cyan-500/20 text-slate-100 cursor-pointer'
                   }`}
                 >
                   <div>
@@ -305,7 +357,7 @@ export default function SmartSearchInput({
                   </div>
                   <span
                     className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                      b.status?.toLowerCase() === 'tersedia' || b.status?.toLowerCase() === 'available'
+                      isAvailable
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                         : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                     }`}
@@ -320,7 +372,6 @@ export default function SmartSearchInput({
 
       {/* Bar Input Utama */}
       <div className="bg-slate-950/90 backdrop-blur-xl border border-slate-800/90 rounded-2xl p-2 shadow-2xl flex flex-wrap sm:flex-nowrap items-center gap-2">
-        {/* Chips Anggota Terpilih */}
         {selectedMember && (
           <div className="flex items-center gap-2.5 bg-cyan-950/80 border border-cyan-500/40 rounded-xl px-3 py-1.5 shadow-md">
             <div className="flex items-center gap-1.5">
@@ -342,7 +393,6 @@ export default function SmartSearchInput({
           </div>
         )}
 
-        {/* Input Text Utama */}
         <div className="flex-1 flex items-center gap-2 bg-slate-900/80 border border-slate-800/80 rounded-xl px-3 py-1.5 focus-within:border-cyan-500/50 transition-all">
           <FontAwesomeIcon
             icon={selectedMember ? ['fas', 'barcode'] : ['fas', 'id-card']}
