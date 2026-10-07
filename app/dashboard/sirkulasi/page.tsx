@@ -12,14 +12,22 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import ResultCard, { type MemberResult, type BookSearchResult } from './components/ResultCard';
+import ResultCard, {
+  hitungJatuhTempo,
+  hitungKeterlambatan,
+  hitungDenda,
+  formatRupiah,
+  tanggalHariIni,
+  type MemberResult,
+  type BookSearchResult,
+} from './components/ResultCard';
 
 /* ───────────────────────── Types ───────────────────────── */
 
 // Info pinjaman aktif milik anggota (dipakai agar tidak perlu query ulang)
 interface ActiveLoan {
   transactionId: number;
-  dueDate: string | null; // YYYY-MM-DD
+  tglPinjam: string | null; // YYYY-MM-DD (sirkulasi.tgl_pinjam)
   nis: string;
 }
 
@@ -75,10 +83,9 @@ interface EksemplarDetailRow {
 
 /* ───────────────────────── Konstanta & helper ───────────────────────── */
 
-const LOAN_DAYS = 5;
 const NOTICE_MS = 3500;
+const NOTICE_LONG_MS = 7000; // notifikasi yang memuat denda tampil lebih lama
 const SEARCH_DEBOUNCE_MS = 300;
-const DAY_MS = 86_400_000;
 const MEMBER_COLUMNS = 'id, nis, nama, jenjang, organisasi, kamar, role, rank';
 const MEMBER_LIMIT = 8;
 const SKELETON_ROWS = 3;
@@ -92,35 +99,11 @@ const reportError = (label: string, err: unknown) => {
   else console.error(label, err);
 };
 
-const addDays = (date: Date, days: number): Date => {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-};
-
-const startOfDay = (date: Date): Date => {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-};
-
-// Format YYYY-MM-DD berdasarkan waktu lokal
-const formatDateToISO = (date: Date): string => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
-
-// Parse YYYY-MM-DD sebagai tanggal lokal (new Date('YYYY-MM-DD') dibaca UTC dan bisa meleset sehari)
-const parseISODate = (value: string): Date => {
-  const [y, m, d] = value.slice(0, 10).split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
-// Jumlah hari keterlambatan (0 jika belum lewat tempo)
-const getOverdueDays = (due: Date): number =>
-  Math.max(0, Math.round((startOfDay(new Date()).getTime() - startOfDay(due).getTime()) / DAY_MS));
+// Kalimat denda untuk notifikasi (kosong jika tidak terlambat)
+const dendaText = (overdueDays: number): string =>
+  overdueDays > 0
+    ? ` Terlambat ${overdueDays} hari, denda ${formatRupiah(hitungDenda(overdueDays))}. Mohon ditagih.`
+    : '';
 
 const errMessage = (err: unknown): string =>
   err instanceof Error
@@ -491,7 +474,7 @@ interface SmartSearchInputProps {
   selectedMember: MemberResult | null;
   onSelectMember: (member: MemberResult | null) => void;
   onSelectBook: (book: BookSearchResult, loan?: ActiveLoan) => void;
-  onNotice: (type: NoticeType, text: string) => void;
+  onNotice: (type: NoticeType, text: string, durationMs?: number) => void;
   disabled?: boolean;
 }
 
@@ -557,7 +540,7 @@ function SmartSearchInput({
       try {
         const { data: activeLoan, error } = await supabase
           .from('sirkulasi')
-          .select('id, kode_eksemplar, judul_buku, biblio_id, tgl_kembali')
+          .select('id, kode_eksemplar, judul_buku, biblio_id, tgl_pinjam')
           .eq('nis', member.nis)
           .eq('status', 'DIPINJAM')
           .order('created_at', { ascending: false })
@@ -599,7 +582,7 @@ function SmartSearchInput({
             },
             {
               transactionId: activeLoan.id as number,
-              dueDate: (activeLoan.tgl_kembali as string | null) ?? null,
+              tglPinjam: (activeLoan.tgl_pinjam as string | null) ?? null,
               nis: member.nis,
             }
           );
@@ -865,25 +848,18 @@ export default function SirkulasiPage() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
 
-  // Default jatuh tempo: +5 hari dari hari ini
-  const [dueDateObj, setDueDateObj] = useState<Date>(() => addDays(new Date(), LOAN_DAYS));
+  // Tanggal pinjam (YYYY-MM-DD). Jatuh tempo = tgl_pinjam + LAMA_PINJAM_HARI (dihitung di ResultCard).
+  const [tglPinjam, setTglPinjam] = useState<string>(() => tanggalHariIni());
 
   // Kunci transaksi yang sedang/sudah diproses: mencegah INSERT ganda (mis. Strict Mode)
   const processedKeyRef = useRef<string | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const dueDateFormatted = dueDateObj.toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-  const overdueDays = getOverdueDays(dueDateObj);
-
   /* Notifikasi: menggantikan alert() yang memblokir halaman */
-  const showNotice = useCallback((type: NoticeType, text: string) => {
+  const showNotice = useCallback((type: NoticeType, text: string, durationMs: number = NOTICE_MS) => {
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
     setNotice({ type, text });
-    noticeTimerRef.current = setTimeout(() => setNotice(null), NOTICE_MS);
+    noticeTimerRef.current = setTimeout(() => setNotice(null), durationMs);
   }, []);
 
   useEffect(() => {
@@ -897,7 +873,7 @@ export default function SirkulasiPage() {
     setSelectedMember(null);
     setSelectedBook(null);
     setActiveTransactionId(null);
-    setDueDateObj(addDays(new Date(), LOAN_DAYS));
+    setTglPinjam(tanggalHariIni());
   }, []);
 
   const handleSelectMember = useCallback(
@@ -916,11 +892,11 @@ export default function SirkulasiPage() {
     if (loan) {
       processedKeyRef.current = `${loan.nis}|${book.barcode}`;
       setActiveTransactionId(loan.transactionId);
-      setDueDateObj(loan.dueDate ? parseISODate(loan.dueDate) : addDays(new Date(), LOAN_DAYS));
+      setTglPinjam(loan.tglPinjam ? loan.tglPinjam.slice(0, 10) : tanggalHariIni());
     } else {
       processedKeyRef.current = null;
       setActiveTransactionId(null);
-      setDueDateObj(addDays(new Date(), LOAN_DAYS));
+      setTglPinjam(tanggalHariIni());
     }
     setSelectedBook(book);
   }, []);
@@ -953,7 +929,7 @@ export default function SirkulasiPage() {
         // 1) Batas 1 buku per anggota: periksa pinjaman aktif milik anggota ini
         const { data: existingLoan, error: existingError } = await supabase
           .from('sirkulasi')
-          .select('id, kode_eksemplar, tgl_kembali')
+          .select('id, kode_eksemplar, tgl_pinjam')
           .eq('nis', selectedMember.nis)
           .eq('status', 'DIPINJAM')
           .limit(1)
@@ -966,7 +942,7 @@ export default function SirkulasiPage() {
           // Buku yang sama: muat saja transaksinya
           if (existingLoan.kode_eksemplar === selectedBook.barcode) {
             setActiveTransactionId(existingLoan.id as number);
-            if (existingLoan.tgl_kembali) setDueDateObj(parseISODate(existingLoan.tgl_kembali as string));
+            if (existingLoan.tgl_pinjam) setTglPinjam((existingLoan.tgl_pinjam as string).slice(0, 10));
             return;
           }
           throw new UserFacingError(
@@ -1001,9 +977,8 @@ export default function SirkulasiPage() {
           throw new UserFacingError('Status buku baru saja berubah. Silakan pilih ulang.');
         }
 
-        // 4) Catat peminjaman
-        const today = new Date();
-        const dueDate = addDays(today, LOAN_DAYS);
+        // 4) Catat peminjaman (tgl_kembali dibiarkan null; baru diisi saat buku dikembalikan)
+        const tglPinjamBaru = tanggalHariIni();
 
         const payload: Record<string, unknown> = {
           nis: selectedMember.nis,
@@ -1011,8 +986,7 @@ export default function SirkulasiPage() {
           kode_eksemplar: selectedBook.barcode,
           judul_buku: selectedBook.title,
           kamar: selectedMember.kamar || null,
-          tgl_pinjam: formatDateToISO(today),
-          tgl_kembali: formatDateToISO(dueDate),
+          tgl_pinjam: tglPinjamBaru,
           status: 'DIPINJAM',
         };
         if (selectedMember.id) payload.member_id = selectedMember.id;
@@ -1034,7 +1008,7 @@ export default function SirkulasiPage() {
         }
 
         if (!isCurrent()) return;
-        setDueDateObj(dueDate);
+        setTglPinjam(tglPinjamBaru);
         setActiveTransactionId(inserted.id as number);
         showNotice('success', 'Peminjaman berhasil dicatat.');
       } catch (err) {
@@ -1052,7 +1026,7 @@ export default function SirkulasiPage() {
     })();
   }, [selectedMember, selectedBook, showNotice]);
 
-  /* Perpanjang (+5 hari; bila sudah lewat tempo, dihitung dari hari ini) */
+  /* Perpanjang: tgl_pinjam di-reset ke hari ini (jatuh tempo baru = hari ini + 5 hari). Tetap bisa saat terlambat. */
   const handleRenew = useCallback(async () => {
     if (!activeTransactionId) {
       showNotice('error', 'Tidak ada transaksi aktif yang dapat diperpanjang.');
@@ -1061,12 +1035,13 @@ export default function SirkulasiPage() {
 
     setLoading(true);
     try {
-      const base = getOverdueDays(dueDateObj) > 0 ? new Date() : dueDateObj;
-      const newDueDate = addDays(base, LOAN_DAYS);
+      // Hitung keterlambatan saat tombol ditekan (untuk info denda)
+      const lateDays = hitungKeterlambatan(hitungJatuhTempo(tglPinjam));
+      const tglPinjamBaru = tanggalHariIni();
 
       const { data, error } = await supabase
         .from('sirkulasi')
-        .update({ tgl_kembali: formatDateToISO(newDueDate) })
+        .update({ tgl_pinjam: tglPinjamBaru })
         .eq('id', activeTransactionId)
         .eq('status', 'DIPINJAM')
         .select('id');
@@ -1078,17 +1053,21 @@ export default function SirkulasiPage() {
         );
       }
 
-      setDueDateObj(newDueDate);
-      showNotice('success', 'Peminjaman buku berhasil diperpanjang!');
+      setTglPinjam(tglPinjamBaru);
+      showNotice(
+        'success',
+        'Peminjaman buku berhasil diperpanjang!' + dendaText(lateDays),
+        lateDays > 0 ? NOTICE_LONG_MS : NOTICE_MS
+      );
     } catch (err) {
       reportError('Error perpanjang:', err);
       showNotice('error', err instanceof UserFacingError ? err.message : 'Gagal memperpanjang peminjaman: ' + errMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [activeTransactionId, dueDateObj, showNotice]);
+  }, [activeTransactionId, tglPinjam, showNotice]);
 
-  /* Pengembalian */
+  /* Pengembalian. Tetap bisa saat terlambat. */
   const handleReturn = useCallback(async () => {
     if (!activeTransactionId || !selectedBook) {
       showNotice('error', 'Tidak ada transaksi aktif untuk dikembalikan.');
@@ -1097,9 +1076,13 @@ export default function SirkulasiPage() {
 
     setLoading(true);
     try {
+      // Hitung keterlambatan saat tombol ditekan (untuk info denda)
+      const lateDays = hitungKeterlambatan(hitungJatuhTempo(tglPinjam));
+
+      // tgl_kembali = tanggal buku benar-benar dikembalikan
       const { data, error: sirkulasiError } = await supabase
         .from('sirkulasi')
-        .update({ status: 'KEMBALI' })
+        .update({ status: 'KEMBALI', tgl_kembali: tanggalHariIni() })
         .eq('id', activeTransactionId)
         .eq('status', 'DIPINJAM')
         .select('id');
@@ -1120,14 +1103,18 @@ export default function SirkulasiPage() {
       }
 
       handleReset();
-      showNotice('success', 'Buku berhasil dikembalikan!');
+      showNotice(
+        'success',
+        'Buku berhasil dikembalikan!' + dendaText(lateDays),
+        lateDays > 0 ? NOTICE_LONG_MS : NOTICE_MS
+      );
     } catch (err) {
       reportError('Error pengembalian:', err);
       showNotice('error', err instanceof UserFacingError ? err.message : 'Gagal memproses pengembalian: ' + errMessage(err));
     } finally {
       setLoading(false);
     }
-  }, [activeTransactionId, selectedBook, handleReset, showNotice]);
+  }, [activeTransactionId, selectedBook, tglPinjam, handleReset, showNotice]);
 
   return (
     // Tanpa background: bg.png dari layout.tsx langsung terlihat
@@ -1163,8 +1150,7 @@ export default function SirkulasiPage() {
           <ResultCard
             member={selectedMember}
             book={selectedBook}
-            dueDate={dueDateFormatted}
-            overdueDays={overdueDays}
+            tglPinjam={tglPinjam}
             onRenew={handleRenew}
             onReturn={handleReturn}
             onReset={handleReset}

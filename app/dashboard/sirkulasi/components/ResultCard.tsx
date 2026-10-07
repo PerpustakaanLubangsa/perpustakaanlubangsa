@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Loader2,
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
   RotateCw,
   Archive,
   Check,
+  Wallet,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -37,6 +38,80 @@ export interface BookSearchResult {
   lokasi_rak?: string;
 }
 
+/* ───────────────────────── Aturan peminjaman, keterlambatan & denda ───────────────────────── */
+
+/** Lama peminjaman (hari) sejak tgl_pinjam. Perpanjang = tgl_pinjam di-reset ke hari ini. */
+export const LAMA_PINJAM_HARI = 5;
+
+/** Denda per hari keterlambatan (rupiah) */
+export const DENDA_PER_HARI = 1000;
+
+/** Ubah Date / string ("YYYY-MM-DD" atau ISO) menjadi tanggal lokal jam 00:00 */
+function keTanggalLokal(value: Date | string): Date {
+  if (value instanceof Date) {
+    return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  const d = new Date(value);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** Tanggal hari ini (lokal) dalam format "YYYY-MM-DD", untuk reset tgl_pinjam saat perpanjang */
+export function tanggalHariIni(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * Hitung tanggal jatuh tempo = tgl_pinjam + lama pinjam.
+ * (Jangan pakai tgl_kembali: nilainya null selama buku masih dipinjam.)
+ */
+export function hitungJatuhTempo(
+  tglPinjam: Date | string,
+  lamaPinjamHari: number = LAMA_PINJAM_HARI
+): Date {
+  const pinjam = keTanggalLokal(tglPinjam);
+  return new Date(pinjam.getFullYear(), pinjam.getMonth(), pinjam.getDate() + lamaPinjamHari);
+}
+
+/**
+ * Hitung hari keterlambatan.
+ * - Pada tanggal jatuh tempo itu sendiri => 0 (belum terlambat).
+ * - Sehari setelah jatuh tempo => 1 hari, dst.
+ * Hanya tanggal yang dibandingkan (jam diabaikan).
+ */
+export function hitungKeterlambatan(
+  jatuhTempo: Date | string,
+  hariIni: Date = new Date()
+): number {
+  const tempo = keTanggalLokal(jatuhTempo);
+  const today = keTanggalLokal(hariIni);
+  const selisih = Math.round((today.getTime() - tempo.getTime()) / 86_400_000);
+  return Math.max(0, selisih);
+}
+
+/** Hitung total denda (rupiah) dari jumlah hari terlambat */
+export function hitungDenda(overdueDays: number): number {
+  return Math.max(0, overdueDays) * DENDA_PER_HARI;
+}
+
+export function formatRupiah(nominal: number): string {
+  return `Rp ${nominal.toLocaleString('id-ID')}`;
+}
+
+export function formatTanggal(tanggal: Date): string {
+  return tanggal.toLocaleDateString('id-ID', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 /* ───────────────────────── Tombol aksi ───────────────────────── */
 
 type Variant = 'primary' | 'soft' | 'outline';
@@ -61,8 +136,8 @@ const DEFAULT_FOCUS_INDEX = 2; // tombol "Selesai"
 interface ResultCardProps {
   member: MemberResult;
   book: BookSearchResult;
-  dueDate: string;
-  overdueDays: number;
+  /** sirkulasi.tgl_pinjam ("YYYY-MM-DD"). Jatuh tempo dihitung dari sini. */
+  tglPinjam: string;
   onRenew: () => void;
   onReturn: () => void;
   onReset: () => void;
@@ -72,15 +147,24 @@ interface ResultCardProps {
 function ResultCard({
   member,
   book,
-  dueDate,
-  overdueDays,
+  tglPinjam,
   onRenew,
   onReturn,
   onReset,
   isLoading = false,
 }: ResultCardProps) {
-  const isOverdue = overdueDays > 0;
+  const { dueDateLabel, overdueDays } = useMemo(() => {
+    const jatuhTempo = hitungJatuhTempo(tglPinjam);
+    return {
+      dueDateLabel: formatTanggal(jatuhTempo),
+      overdueDays: hitungKeterlambatan(jatuhTempo),
+    };
+  }, [tglPinjam]);
 
+  const isOverdue = overdueDays > 0;
+  const denda = hitungDenda(overdueDays);
+
+  // Catatan: terlambat TIDAK menonaktifkan tombol. Perpanjang & Kembalikan tetap bisa.
   const actions: ActionDef[] = [
     { label: 'Perpanjang', icon: RotateCw, onClick: onRenew, variant: 'primary' },
     { label: 'Kembalikan', icon: Archive, onClick: onReturn, variant: 'soft' },
@@ -129,8 +213,14 @@ function ResultCard({
           <Receipt className="h-4 w-4" />
           <span>Detail Transaksi Sirkulasi</span>
         </div>
-        <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 font-bold">
-          Status: Dipinjam
+        <span
+          className={`text-[10px] px-2 py-0.5 rounded border font-bold ${
+            isOverdue
+              ? 'bg-red-50 text-red-700 border-red-200'
+              : 'bg-blue-50 text-blue-700 border-blue-200'
+          }`}
+        >
+          Status: Dipinjam{isOverdue ? ' • Terlambat' : ''}
         </span>
       </div>
 
@@ -202,10 +292,29 @@ function ResultCard({
               isOverdue ? 'text-red-600 border-red-200' : 'text-blue-700 border-blue-200'
             }`}
           >
-            {dueDate}
+            {dueDateLabel}
           </span>
         </div>
       </div>
+
+      {/* Denda keterlambatan */}
+      {isOverdue && (
+        <div className="rounded-xl p-3 border border-red-200 bg-red-50/60 space-y-1">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-slate-700 text-xs font-medium">
+              <Wallet className="h-4 w-4 text-red-500" />
+              <span>Denda Keterlambatan:</span>
+            </div>
+            <span className="text-xs font-black font-mono px-2.5 py-1 rounded-lg border bg-white text-red-600 border-red-200">
+              {formatRupiah(denda)}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-500">
+            {overdueDays} hari × {formatRupiah(DENDA_PER_HARI)}/hari. Buku tetap dapat dikembalikan
+            atau diperpanjang.
+          </p>
+        </div>
+      )}
 
       {/* Tombol aksi: fokus dengan panah, Enter untuk menjalankan */}
       <div role="group" aria-label="Aksi transaksi" onKeyDown={handleKeyDown} className="flex items-center gap-2 pt-1">
