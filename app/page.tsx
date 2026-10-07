@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Loader2, BookX, Image as ImageIcon, BookOpenText } from 'lucide-react';
+import { Loader2, BookX, Image as ImageIcon, BookOpenText, ArrowUp } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import BookDetailModal from './components/book-detail-modal';
 import HeroSearch from './components/hero-search';
@@ -30,6 +30,15 @@ interface Book {
 }
 
 const ITEMS_PER_PAGE = 25;
+
+// Batas maksimum hasil yang dikembalikan fungsi SQL search_biblio per pencarian
+const SEARCH_MAX_RESULTS = 1000;
+
+// Jarak scroll (px) sebelum tombol "ke atas" muncul
+const SCROLL_TOP_THRESHOLD = 400;
+
+const BOOK_COLUMNS =
+  'id, judul, penulis, isbn_issn, penerbit, tahun_terbit, deskripsi_fisik, sampul_url, abstrak, kategori, topik, created_at, updated_at, jumlah_baca, jumlah_pinjam';
 
 // Memoized Lazy Image untuk menghemat resource rendering
 const LazyImage = memo(function LazyImage({ src, alt }: { src: string; alt: string }) {
@@ -78,6 +87,43 @@ const LazyImage = memo(function LazyImage({ src, alt }: { src: string; alt: stri
         />
       )}
     </div>
+  );
+});
+
+// Tombol kembali ke atas (muncul di pojok kanan bawah saat halaman di-scroll)
+const ScrollToTopButton = memo(function ScrollToTopButton() {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsVisible(window.scrollY > SCROLL_TOP_THRESHOLD);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleClick = useCallback(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-label="Kembali ke atas"
+      title="Kembali ke atas"
+      tabIndex={isVisible ? 0 : -1}
+      aria-hidden={!isVisible}
+      className={`fixed bottom-5 right-5 sm:bottom-8 sm:right-8 z-40 inline-flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-900/20 transition-all duration-200 hover:bg-blue-700 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 cursor-pointer ${
+        isVisible
+          ? 'opacity-100 translate-y-0 pointer-events-auto'
+          : 'opacity-0 translate-y-3 pointer-events-none'
+      }`}
+    >
+      <ArrowUp className="h-5 w-5 sm:h-6 sm:w-6" strokeWidth={2.2} />
+    </button>
   );
 });
 
@@ -151,22 +197,18 @@ BookCard.displayName = 'BookCard';
 export default function HomePage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [categories, setCategories] = useState<string[]>(['Semua']);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(''); // teks di input (tidak memicu pencarian)
+  const [activeSearch, setActiveSearch] = useState(''); // kata kunci yang benar-benar dicari
   const [selectedCategory, setSelectedCategory] = useState('Semua');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [currentSearchedTerm, setCurrentSearchedTerm] = useState('');
-  const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [isSearchingUI, setIsSearchingUI] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [isVisitorOpen, setIsVisitorOpen] = useState(false);
 
   const observer = useRef<IntersectionObserver | null>(null);
-
-  const handleToggleVisitor = useCallback(() => {
-    setIsVisitorOpen((prev) => !prev);
-  }, []);
+  const pageRef = useRef(0);
+  const requestIdRef = useRef(0);
 
   // Ambil list Kategori Unik
   useEffect(() => {
@@ -195,50 +237,50 @@ export default function HomePage() {
     };
   }, []);
 
-  // Debounce Jeda Pengetikan Input
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setDebouncedSearchQuery('');
-      setIsSearchingUI(false);
-      return;
-    }
-
-    const handler = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 450);
-
-    return () => clearTimeout(handler);
-  }, [searchQuery]);
-
   // Fungsi Fetch Data dari Supabase
   const fetchBooks = useCallback(
     async (currentPage: number, search: string, category: string, isNewSearch = false) => {
+      const requestId = ++requestIdRef.current;
       setLoading(true);
 
       try {
         const from = currentPage * ITEMS_PER_PAGE;
         const to = from + ITEMS_PER_PAGE - 1;
 
-        let query = supabase
-          .from('biblio')
-          .select(
-            'id, judul, penulis, isbn_issn, penerbit, tahun_terbit, deskripsi_fisik, sampul_url, abstrak, kategori, topik, created_at, updated_at, jumlah_baca, jumlah_pinjam'
-          )
-          .order('created_at', { ascending: false })
-          .range(from, to);
+        let data: any[] | null = null;
 
         if (search) {
+          // Pencarian judul + penulis + topik lewat fungsi SQL search_biblio
+          let query = supabase
+            .rpc('search_biblio', { q: search, lim: SEARCH_MAX_RESULTS })
+            .range(from, to);
+
           if (category !== 'Semua') {
-            query = query.eq('kategori', category).or(`judul.ilike.%${search}%,penulis.ilike.%${search}%`);
-          } else {
-            query = query.or(`judul.ilike.%${search}%,penulis.ilike.%${search}%,kategori.ilike.%${search}%`);
+            query = query.eq('kategori', category);
           }
-        } else if (category !== 'Semua') {
-          query = query.eq('kategori', category);
+
+          const res = await query;
+          if (res.error) throw res.error;
+          data = res.data as any[] | null;
+        } else {
+          // Tanpa kata kunci: daftar koleksi terbaru
+          let query = supabase
+            .from('biblio')
+            .select(BOOK_COLUMNS)
+            .order('created_at', { ascending: false })
+            .range(from, to);
+
+          if (category !== 'Semua') {
+            query = query.eq('kategori', category);
+          }
+
+          const res = await query;
+          if (res.error) throw res.error;
+          data = res.data as any[] | null;
         }
 
-        const { data, error } = await query;
-        if (error) throw error;
+        // Abaikan respons usang (user sudah mencari hal lain)
+        if (requestId !== requestIdRef.current) return;
 
         if (data) {
           const mappedData: Book[] = data.map((b) => ({
@@ -264,20 +306,27 @@ export default function HomePage() {
         }
       } catch (err) {
         console.error('Gagal mengambil data:', err);
+        if (requestId === requestIdRef.current && isNewSearch) {
+          setBooks([]);
+          setHasMore(false);
+          setCurrentSearchedTerm(search);
+        }
       } finally {
-        setLoading(false);
-        setIsSearchingUI(false);
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+          setIsSearchingUI(false);
+        }
       }
     },
     []
   );
 
-  // Reset & Fetch ulang saat parameter pencarian berubah
+  // Reset & Fetch ulang saat kata kunci yang dicari atau kategori berubah
   useEffect(() => {
-    setPage(0);
+    pageRef.current = 0;
     setHasMore(true);
-    fetchBooks(0, debouncedSearchQuery, selectedCategory, true);
-  }, [debouncedSearchQuery, selectedCategory, fetchBooks]);
+    fetchBooks(0, activeSearch, selectedCategory, true);
+  }, [activeSearch, selectedCategory, fetchBooks]);
 
   // Infinite Scroll Intersection Observer
   const lastBookElementRef = useCallback(
@@ -288,11 +337,9 @@ export default function HomePage() {
       observer.current = new IntersectionObserver(
         (entries) => {
           if (entries[0].isIntersecting && hasMore) {
-            setPage((prevPage) => {
-              const nextPage = prevPage + 1;
-              fetchBooks(nextPage, debouncedSearchQuery, selectedCategory, false);
-              return nextPage;
-            });
+            const nextPage = pageRef.current + 1;
+            pageRef.current = nextPage;
+            fetchBooks(nextPage, activeSearch, selectedCategory, false);
           }
         },
         { rootMargin: '300px' }
@@ -300,15 +347,24 @@ export default function HomePage() {
 
       if (node) observer.current.observe(node);
     },
-    [loading, hasMore, debouncedSearchQuery, selectedCategory, fetchBooks]
+    [loading, hasMore, activeSearch, selectedCategory, fetchBooks]
   );
 
+  // Mengetik hanya memperbarui teks input, tidak mencari
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value);
-    if (value.trim() !== '') {
-      setIsSearchingUI(true);
-    }
   }, []);
+
+  // Pencarian berjalan hanya saat klik Cari, Enter, atau memilih saran
+  const handleSearch = useCallback(
+    (query: string) => {
+      const term = query.trim();
+      if (term === activeSearch) return; // kata kunci sama: tidak perlu mencari ulang
+      setIsSearchingUI(true);
+      setActiveSearch(term);
+    },
+    [activeSearch]
+  );
 
   const handleSelectBook = useCallback((book: Book) => {
     setSelectedBook(book);
@@ -323,12 +379,9 @@ export default function HomePage() {
         onCategoryChange={setSelectedCategory}
         searchQuery={searchQuery}
         onSearchChange={handleSearchChange}
+        onSearch={handleSearch}
         isSearching={isSearchingUI}
-        onToggleVisitor={handleToggleVisitor}
-        isVisitorOpen={isVisitorOpen}
       />
-
-      {/* TODO: panel/modal "Catat Kunjungan" ditampilkan di sini saat isVisitorOpen === true */}
 
       {/* --- KATALOG BUKU --- */}
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 pt-12 pb-16">
@@ -341,6 +394,7 @@ export default function HomePage() {
             </h2>
             <p className="text-sm text-slate-600 mt-1">
               Ditemukan <span className="font-semibold text-blue-700">{books.length}</span> koleksi
+              {hasMore ? '+' : ''}
             </p>
           </div>
         )}
@@ -402,6 +456,9 @@ export default function HomePage() {
           onClose={() => setSelectedBook(null)}
         />
       </div>
+
+      {/* --- TOMBOL KEMBALI KE ATAS --- */}
+      <ScrollToTopButton />
     </main>
   );
 }
