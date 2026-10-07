@@ -19,6 +19,7 @@ import {
   Info,
   CheckCircle2,
   Plus,
+  CornerDownLeft,
 } from 'lucide-react';
 import VisitorProfileModal, { ProfileTarget } from './VisitorProfileModal';
 
@@ -35,6 +36,11 @@ const comboInputClass = `${inputClass} pr-9`;
 const iconClass = 'h-4 w-4 text-blue-600';
 const dropdownClass =
   'absolute left-0 right-0 top-[calc(100%+4px)] bg-white rounded-xl max-h-56 overflow-y-auto z-50 border border-blue-200 shadow-md';
+
+/* Tombol timbul (gaya sama seperti tombol X): biru, bayangan bawah, hover = seperti ditekan */
+const raisedButtonBase =
+  'flex items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-600 px-3 py-3 text-sm font-bold text-white shadow-[0_4px_0_0_#1e40af] transition-all duration-100 hover:translate-y-1 hover:bg-blue-700 hover:shadow-[0_0_0_0_#1e40af] active:translate-y-1 active:shadow-[0_0_0_0_#1e40af] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:translate-y-0 disabled:bg-slate-300 disabled:text-slate-500 disabled:shadow-[0_4px_0_0_#94a3b8]';
+const raisedButtonClass = `${raisedButtonBase} flex-1`;
 
 /* =========================================================
    FUNGSI PENCARIAN (Supabase)
@@ -245,6 +251,19 @@ function SkeletonRow() {
   );
 }
 
+/* Tanda "Enter" pada item yang sedang terfokus */
+function EnterHint() {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-blue-300 bg-white px-1.5 py-0.5 text-[11px] font-bold leading-none text-blue-700"
+    >
+      <CornerDownLeft className="h-3 w-3" />
+      Enter
+    </span>
+  );
+}
+
 interface SuggestionDropdownProps<T> {
   id: string;
   open: boolean;
@@ -296,23 +315,27 @@ function SuggestionDropdown<T extends { id: string | number }>({
       ) : items.length === 0 ? (
         <div className="px-3 py-3 text-sm text-slate-600">{emptyText}</div>
       ) : (
-        items.map((item, index) => (
-          <div
-            key={item.id}
-            id={`${id}-opt-${index}`}
-            role="option"
-            aria-selected={index === activeIndex}
-            // Cegah input kehilangan fokus saat item diklik
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onPick(item)}
-            onMouseEnter={() => onHover(index)}
-            className={`cursor-pointer border-b border-blue-50 px-3 py-2 text-left last:border-none ${
-              index === activeIndex ? 'bg-blue-100' : 'bg-white'
-            }`}
-          >
-            {renderItem(item)}
-          </div>
-        ))
+        items.map((item, index) => {
+          const isActive = index === activeIndex;
+          return (
+            <div
+              key={item.id}
+              id={`${id}-opt-${index}`}
+              role="option"
+              aria-selected={isActive}
+              // Cegah input kehilangan fokus saat item diklik
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => onPick(item)}
+              onMouseEnter={() => onHover(index)}
+              className={`flex cursor-pointer items-center justify-between gap-2 border-b border-blue-50 px-3 py-2 text-left last:border-none ${
+                isActive ? 'bg-blue-100' : 'bg-white'
+              }`}
+            >
+              <div className="min-w-0 flex-1">{renderItem(item)}</div>
+              {isActive && <EnterHint />}
+            </div>
+          );
+        })
       )}
     </div>
   );
@@ -356,6 +379,20 @@ function VisitorFormContent({ onSuccess, onClose }: VisitorFormContentProps) {
   // Ref untuk pindah fokus otomatis setelah memilih
   const bukuInputRef = useRef<HTMLInputElement>(null);
   const aktivitasSelectRef = useRef<HTMLSelectElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Semua input sudah terisi (nama & buku harus dipilih dari daftar pencarian)
+  const allFilled = Boolean(
+    selectedAnggota &&
+      selectedBuku &&
+      nama.trim() &&
+      kamar.trim() &&
+      jenjang &&
+      buku.trim() &&
+      kategori &&
+      aktivitas
+  );
 
   // Autocomplete Nama
   const anggotaAC = useAutocomplete<any>({
@@ -401,6 +438,11 @@ function VisitorFormContent({ onSuccess, onClose }: VisitorFormContentProps) {
     };
   }, []);
 
+  // Saat ada pesan error, gulir ke atas agar pesan selalu terlihat di layar pendek
+  useEffect(() => {
+    if (errorMsg) scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [errorMsg]);
+
   const handleNamaChange = (val: string) => {
     setNama(val);
     setSelectedAnggota(null);
@@ -420,9 +462,22 @@ function VisitorFormContent({ onSuccess, onClose }: VisitorFormContentProps) {
     setErrorMsg(null);
   };
 
+  // Tekan Enter di field mana pun (termasuk dropdown pilihan) saat semua terisi = simpan.
+  // Jika Enter sudah dipakai dropdown saran (defaultPrevented), tidak ikut menyimpan.
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key !== 'Enter' || e.defaultPrevented || e.nativeEvent.isComposing) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, textarea')) return;
+    if (!allFilled) return;
+
+    e.preventDefault(); // cegah submit bawaan browser agar tidak dobel
+    if (!loading) formRef.current?.requestSubmit();
+  };
+
   // Validasi sesi waktu & submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
 
     if (!selectedAnggota || !selectedBuku) {
       setErrorMsg('Harap pilih Nama & Buku dari daftar pencarian yang muncul.');
@@ -609,8 +664,18 @@ function VisitorFormContent({ onSuccess, onClose }: VisitorFormContentProps) {
   return (
     <>
       {/* Isi form (area yang bisa di-scroll) */}
-      <div className="flex-1 min-h-0 overflow-y-auto bg-white px-4 py-4 sm:px-6 sm:py-5">
-        <form id="visitor-form" onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto bg-white px-4 py-3 sm:px-6 sm:py-5"
+      >
+        <form
+          id="visitor-form"
+          ref={formRef}
+          onSubmit={handleSubmit}
+          onKeyDown={handleFormKeyDown}
+          className="space-y-4"
+          autoComplete="off"
+        >
           {errorMsg && (
             <div
               role="alert"
@@ -852,36 +917,64 @@ function VisitorFormContent({ onSuccess, onClose }: VisitorFormContentProps) {
         </form>
       </div>
 
-      {/* FOOTER ACTIONS: satu baris kiri-kanan, latar sama, tanpa garis pemisah */}
-      <div className="shrink-0 bg-white px-4 pb-4 pt-2 sm:px-6 sm:pb-5">
-        <div className="flex items-stretch gap-3">
-          <Link
-            href="/leaderboard"
-            className="flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-blue-200 bg-white px-3 py-3 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 cursor-pointer"
-          >
-            <Trophy className="h-4 w-4 shrink-0 text-amber-500" />
-            Lihat Leaderboard
-          </Link>
+      {/* FOOTER ACTIONS: padding bawah cukup agar bayangan tombol tidak terpotong */}
+      <div className="shrink-0 bg-white px-4 pb-6 pt-3 sm:px-6 sm:pb-7">
+        {allFilled ? (
+          /* Semua terisi: satu tombol Enter di tengah + petunjuk */
+          <div className="flex flex-col items-center gap-3">
+            <button
+              type="submit"
+              form="visitor-form"
+              disabled={loading}
+              className={`${raisedButtonBase} min-w-[9.5rem] px-8`}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <CornerDownLeft className="h-4 w-4 shrink-0" />
+                  Enter
+                </>
+              )}
+            </button>
+            <p className="text-center text-xs leading-relaxed text-slate-600">
+              Tekan{' '}
+              <kbd className="rounded border border-blue-300 bg-blue-50 px-1.5 py-0.5 font-sans text-[11px] font-bold text-blue-700">
+                Enter
+              </kbd>{' '}
+              untuk menyimpan kunjungan
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-stretch gap-3">
+            <Link href="/leaderboard" className={raisedButtonClass}>
+              <Trophy className="h-4 w-4 shrink-0 text-amber-300" />
+              Lihat Leaderboard
+            </Link>
 
-          <button
-            type="submit"
-            form="visitor-form"
-            disabled={loading}
-            className="flex flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-blue-600 px-3 py-3 text-sm font-bold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 cursor-pointer"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-                Menyimpan...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 shrink-0" />
-                Simpan Kunjungan
-              </>
-            )}
-          </button>
-        </div>
+            <button
+              type="submit"
+              form="visitor-form"
+              disabled={loading}
+              className={raisedButtonClass}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                  Menyimpan...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 shrink-0" />
+                  Simpan Kunjungan
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
@@ -940,8 +1033,9 @@ export default function VisitorModal({ isOpen, onClose }: VisitorModalProps) {
         {/* Overlay gelap transparan (tanpa blur agar ringan di device rendah) */}
         <div className="absolute inset-0 bg-slate-900/60" onClick={onClose} />
 
-        {/* Konten Modal: satu latar putih untuk header, isi, dan footer */}
-        <div className="relative z-10 flex w-full max-w-md max-h-[92vh] flex-col overflow-hidden rounded-2xl border border-blue-200 bg-white text-slate-900">
+        {/* Konten Modal: tinggi mengikuti area layar yang benar-benar terlihat (dvh),
+            dikurangi padding overlay, sehingga tidak pernah melebihi layar */}
+        <div className="relative z-10 flex w-full max-w-md max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] flex-col overflow-hidden rounded-2xl border border-blue-200 bg-white text-slate-900">
           {/* Header Modal (tanpa garis pemisah) */}
           <div className="flex shrink-0 items-center justify-between gap-3 bg-white px-4 pb-3 pt-4 sm:px-6">
             <div className="flex items-center gap-3 min-w-0">

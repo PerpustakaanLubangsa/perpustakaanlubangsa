@@ -1,6 +1,6 @@
 'use client';
 
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Loader2,
   CheckCircle2,
@@ -23,6 +23,14 @@ interface ActiveLoan {
   nis: string;
 }
 
+// Info buku yang sedang dipinjam, ditampilkan di hasil pencarian anggota
+interface MemberLoanInfo {
+  kode: string;
+  judul: string;
+}
+
+type MemberSuggestion = MemberResult & { loan?: MemberLoanInfo };
+
 type NoticeType = 'success' | 'error';
 type Notice = { type: NoticeType; text: string } | null;
 
@@ -36,6 +44,12 @@ interface AnggotaRow {
   kamar: string | null;
   role: string;
   rank: string | null;
+}
+
+interface SirkulasiLoanRow {
+  nis: string;
+  kode_eksemplar: string;
+  judul_buku: string | null;
 }
 
 interface BiblioInfo {
@@ -65,6 +79,9 @@ const LOAN_DAYS = 5;
 const NOTICE_MS = 3500;
 const SEARCH_DEBOUNCE_MS = 300;
 const DAY_MS = 86_400_000;
+const MEMBER_COLUMNS = 'id, nis, nama, jenjang, organisasi, kamar, role, rank';
+const MEMBER_LIMIT = 8;
+const SKELETON_ROWS = 3;
 
 // Kesalahan yang sudah "diharapkan" (aturan bisnis / data tidak tersimpan):
 // cukup tampil sebagai notifikasi, tidak memicu error di console.
@@ -124,47 +141,100 @@ const isAvailableStatus = (status?: string | null) => {
 const firstOf = <T,>(value: T | T[] | null | undefined): T | null =>
   Array.isArray(value) ? value[0] ?? null : value ?? null;
 
+const toMember = (m: AnggotaRow): MemberSuggestion => ({
+  id: String(m.id),
+  nis: m.nis,
+  nama: m.nama,
+  jenjang: m.jenjang,
+  organisasi: m.organisasi || undefined,
+  kamar: m.kamar || undefined,
+  role: m.role,
+  rank: m.rank || 'Warrior',
+});
+
 /* ───────────────────────── Query Supabase ───────────────────────── */
 
-const fetchMembers = async (term: string): Promise<MemberResult[]> => {
-  const { data, error } = await supabase
-    .from('anggota')
-    .select('id, nis, nama, jenjang, organisasi, kamar, role, rank')
-    .or(`nama.ilike.%${term}%,nis.ilike.%${term}%`)
-    .limit(8);
+/**
+ * Cari anggota berdasarkan nama / NIS, dan juga berdasarkan buku yang sedang
+ * dipinjam (judul atau kode eksemplar). Setiap hasil dilengkapi info pinjaman aktif.
+ * Hasil yang cocok persis (NIS / kode eksemplar) diletakkan paling atas.
+ */
+const fetchMembers = async (term: string): Promise<MemberSuggestion[]> => {
+  const [identityRes, loanMatchRes] = await Promise.all([
+    supabase
+      .from('anggota')
+      .select(MEMBER_COLUMNS)
+      .or(`nama.ilike.%${term}%,nis.ilike.%${term}%`)
+      .limit(MEMBER_LIMIT),
+    supabase
+      .from('sirkulasi')
+      .select('nis')
+      .eq('status', 'DIPINJAM')
+      .or(`judul_buku.ilike.%${term}%,kode_eksemplar.ilike.%${term}%`)
+      .limit(MEMBER_LIMIT),
+  ]);
 
-  if (error) throw error;
+  if (identityRes.error) throw identityRes.error;
+  if (loanMatchRes.error) {
+    console.warn('Gagal mencari berdasarkan buku yang dipinjam:', errMessage(loanMatchRes.error));
+  }
 
-  const members: MemberResult[] = ((data ?? []) as AnggotaRow[]).map((m) => ({
-    id: String(m.id),
-    nis: m.nis,
-    nama: m.nama,
-    jenjang: m.jenjang,
-    organisasi: m.organisasi || undefined,
-    kamar: m.kamar || undefined,
-    role: m.role,
-    rank: m.rank || 'Warrior',
-  }));
+  const members = ((identityRes.data ?? []) as AnggotaRow[]).map(toMember);
+
+  // Anggota yang cocok lewat buku pinjaman tetapi belum ada di hasil nama/NIS
+  const known = new Set(members.map((m) => m.nis));
+  const extraNis = Array.from(
+    new Set(((loanMatchRes.data ?? []) as { nis: string }[]).map((l) => l.nis))
+  ).filter((nis) => !known.has(nis));
+
+  if (extraNis.length > 0) {
+    const { data: extra, error: extraError } = await supabase
+      .from('anggota')
+      .select(MEMBER_COLUMNS)
+      .in('nis', extraNis);
+
+    if (extraError) {
+      console.warn('Gagal memuat anggota peminjam:', errMessage(extraError));
+    } else {
+      members.push(...((extra ?? []) as AnggotaRow[]).map(toMember));
+    }
+  }
 
   if (members.length === 0) return members;
 
-  // Tandai anggota yang masih meminjam (1 anggota = 1 buku)
+  // Ambil pinjaman aktif semua anggota hasil (1 anggota = 1 buku)
   const { data: loans, error: loanError } = await supabase
     .from('sirkulasi')
-    .select('nis')
+    .select('nis, kode_eksemplar, judul_buku')
     .eq('status', 'DIPINJAM')
     .in(
       'nis',
       members.map((m) => m.nis)
-    );
+    )
+    .order('created_at', { ascending: false });
 
   if (loanError) {
     console.warn('Gagal memeriksa status pinjaman anggota:', errMessage(loanError));
     return members;
   }
 
-  const borrowing = new Set(((loans ?? []) as { nis: string }[]).map((l) => l.nis));
-  return members.map((m) => ({ ...m, isBorrowing: borrowing.has(m.nis) }));
+  const loanByNis = new Map<string, MemberLoanInfo>();
+  for (const l of (loans ?? []) as SirkulasiLoanRow[]) {
+    if (!loanByNis.has(l.nis)) {
+      loanByNis.set(l.nis, { kode: l.kode_eksemplar, judul: l.judul_buku || 'Tanpa Judul' });
+    }
+  }
+
+  const withLoans = members.map<MemberSuggestion>((m) => {
+    const loan = loanByNis.get(m.nis);
+    return loan ? { ...m, isBorrowing: true, loan } : { ...m, isBorrowing: false };
+  });
+
+  // Cocok persis (NIS / kode eksemplar yang dipinjam) → paling atas
+  const lowered = term.toLowerCase();
+  const rank = (m: MemberSuggestion) =>
+    m.nis.toLowerCase() === lowered || m.loan?.kode.toLowerCase() === lowered ? 0 : 1;
+  return withLoans.sort((a, b) => rank(a) - rank(b));
 };
 
 const fetchBooks = async (term: string): Promise<BookSearchResult[]> => {
@@ -213,55 +283,140 @@ const fetchBooks = async (term: string): Promise<BookSearchResult[]> => {
     };
   });
 
-  // Buku yang tersedia ditampilkan lebih dulu
-  return books.sort(
-    (a, b) => Number(isAvailableStatus(b.status)) - Number(isAvailableStatus(a.status))
-  );
+  // Kode cocok persis dulu, lalu buku yang tersedia
+  const lowered = term.toLowerCase();
+  const score = (b: BookSearchResult) =>
+    (b.barcode.toLowerCase() === lowered ? 2 : 0) + (isAvailableStatus(b.status) ? 1 : 0);
+  return books.sort((a, b) => score(b) - score(a));
 };
 
+/* ───────────────────────── Skeleton loading ───────────────────────── */
+
+const MemberSkeletonRow = () => (
+  <div className="p-2.5 rounded-xl flex justify-between items-center gap-3 my-0.5 animate-pulse">
+    <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div className="w-8 h-8 rounded-full bg-blue-100 shrink-0" />
+      <div className="flex-1 space-y-1.5">
+        <div className="h-3 w-2/5 rounded bg-slate-200" />
+        <div className="h-2.5 w-3/5 rounded bg-blue-100" />
+      </div>
+    </div>
+    <div className="h-4 w-14 rounded-md bg-blue-100 shrink-0" />
+  </div>
+);
+
+const BookSkeletonRow = () => (
+  <div className="p-2.5 rounded-xl flex justify-between items-center gap-3 my-0.5 animate-pulse">
+    <div className="flex-1 space-y-1.5">
+      <div className="h-3 w-3/5 rounded bg-slate-200" />
+      <div className="h-2.5 w-4/5 rounded bg-blue-100" />
+    </div>
+    <div className="h-4 w-14 rounded bg-blue-100 shrink-0" />
+  </div>
+);
+
+const SearchSkeleton = ({ variant }: { variant: 'member' | 'book' }) => (
+  <div role="status" aria-label="Memuat hasil pencarian" aria-busy="true">
+    {Array.from({ length: SKELETON_ROWS }).map((_, i) =>
+      variant === 'member' ? <MemberSkeletonRow key={i} /> : <BookSkeletonRow key={i} />
+    )}
+  </div>
+);
+
 /* ───────────────────────── Baris hasil (memoized) ───────────────────────── */
+
+// Petunjuk pada item yang sedang tersorot
+const EnterHint = () => (
+  <span className="flex items-center gap-1 text-[10px] font-bold text-white shrink-0">
+    <kbd className="bg-white/20 border border-white/40 px-1.5 py-0.5 rounded font-mono">↵ Enter</kbd>
+    <span className="hidden sm:inline">untuk memilih</span>
+  </span>
+);
 
 const MemberItem = memo(function MemberItem({
   member,
   index,
   selected,
   onPick,
+  onHover,
 }: {
-  member: MemberResult;
+  member: MemberSuggestion;
   index: number;
   selected: boolean;
-  onPick: (m: MemberResult) => void;
+  onPick: (m: MemberSuggestion) => void;
+  onHover: (index: number) => void;
 }) {
   return (
     <div
       data-idx={index}
       onClick={() => onPick(member)}
+      onMouseEnter={() => onHover(index)}
+      aria-selected={selected}
       className={`p-2.5 rounded-xl cursor-pointer flex justify-between items-center gap-3 text-xs border transition-colors my-0.5 ${
         selected
-          ? 'bg-blue-50 border-blue-300 text-slate-900'
+          ? 'bg-blue-600 border-blue-600 text-white shadow-sm'
           : 'border-transparent text-slate-800 hover:bg-blue-50'
       }`}
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-500 shrink-0">
+        <div
+          className={`w-8 h-8 rounded-full border flex items-center justify-center shrink-0 ${
+            selected
+              ? 'bg-white/20 border-white/30 text-white'
+              : 'bg-blue-50 border-blue-100 text-blue-500'
+          }`}
+        >
           <User className="h-4 w-4" />
         </div>
         <div className="min-w-0">
           <p className="font-bold truncate">{member.nama}</p>
-          <p className="text-[10px] text-blue-600 font-mono font-semibold">
+          <p
+            className={`text-[10px] font-mono font-semibold ${
+              selected ? 'text-blue-100' : 'text-blue-600'
+            }`}
+          >
             NIS: {member.nis} {member.jenjang ? `• ${member.jenjang}` : ''}
           </p>
+          {member.loan && (
+            <p
+              className={`mt-0.5 flex items-center gap-1 text-[10px] min-w-0 ${
+                selected ? 'text-white' : 'text-slate-600'
+              }`}
+            >
+              <BookOpen className={`h-3 w-3 shrink-0 ${selected ? 'text-blue-100' : 'text-blue-500'}`} />
+              <span className="truncate font-semibold">{member.loan.judul}</span>
+              <span className={`shrink-0 ${selected ? 'text-blue-200' : 'text-slate-400'}`}>•</span>
+              <span
+                className={`shrink-0 font-mono font-semibold ${
+                  selected ? 'text-blue-100' : 'text-blue-600'
+                }`}
+              >
+                {member.loan.kode}
+              </span>
+            </p>
+          )}
         </div>
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
+        {selected && <EnterHint />}
         {member.isBorrowing && (
-          <span className="flex items-center gap-1 text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-md font-bold">
+          <span
+            className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md font-bold ${
+              selected ? 'bg-white text-blue-700' : 'bg-blue-600 text-white'
+            }`}
+          >
             <BookOpen className="h-3 w-3" />
             Meminjam
           </span>
         )}
-        <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-md font-bold">
+        <span
+          className={`text-[10px] border px-2 py-0.5 rounded-md font-bold ${
+            selected
+              ? 'bg-blue-500 text-white border-blue-300'
+              : 'bg-blue-50 text-blue-700 border-blue-200'
+          }`}
+        >
           {member.rank}
         </span>
       </div>
@@ -274,43 +429,58 @@ const BookItem = memo(function BookItem({
   index,
   selected,
   onPick,
+  onHover,
 }: {
   book: BookSearchResult;
   index: number;
   selected: boolean;
   onPick: (b: BookSearchResult) => void;
+  onHover: (index: number) => void;
 }) {
   const available = isAvailableStatus(book.status);
+  const active = selected && available;
 
   return (
     <div
       data-idx={index}
       onClick={() => onPick(book)}
+      onMouseEnter={() => {
+        if (available) onHover(index);
+      }}
       aria-disabled={!available}
+      aria-selected={active}
       className={`p-2.5 rounded-xl flex justify-between items-center gap-3 text-xs border transition-colors my-0.5 ${
         !available
           ? 'bg-slate-50 border-transparent text-slate-400 cursor-not-allowed'
-          : selected
-          ? 'bg-blue-50 border-blue-300 text-slate-900 cursor-pointer'
+          : active
+          ? 'bg-blue-600 border-blue-600 text-white shadow-sm cursor-pointer'
           : 'border-transparent text-slate-800 hover:bg-blue-50 cursor-pointer'
       }`}
     >
       <div className="min-w-0">
         <p className="font-bold truncate">{book.title}</p>
-        <p className="text-[10px] text-slate-500 truncate">
-          Kode: <span className="text-blue-600 font-mono font-semibold">{book.barcode}</span> • Penulis:{' '}
-          {book.author}
+        <p className={`text-[10px] truncate ${active ? 'text-blue-100' : 'text-slate-500'}`}>
+          Kode:{' '}
+          <span className={`font-mono font-semibold ${active ? 'text-white' : 'text-blue-600'}`}>
+            {book.barcode}
+          </span>{' '}
+          • Penulis: {book.author}
         </p>
       </div>
-      <span
-        className={`text-[10px] px-2 py-0.5 rounded border font-bold shrink-0 ${
-          available
-            ? 'bg-blue-50 text-blue-700 border-blue-200'
-            : 'bg-red-50 text-red-600 border-red-200'
-        }`}
-      >
-        {book.status}
-      </span>
+      <div className="flex items-center gap-2 shrink-0">
+        {active && <EnterHint />}
+        <span
+          className={`text-[10px] px-2 py-0.5 rounded border font-bold ${
+            !available
+              ? 'bg-red-50 text-red-600 border-red-200'
+              : active
+              ? 'bg-white text-blue-700 border-white'
+              : 'bg-blue-50 text-blue-700 border-blue-200'
+          }`}
+        >
+          {book.status}
+        </span>
+      </div>
     </div>
   );
 });
@@ -333,7 +503,7 @@ function SmartSearchInput({
   disabled = false,
 }: SmartSearchInputProps) {
   const [query, setQuery] = useState('');
-  const [memberSuggestions, setMemberSuggestions] = useState<MemberResult[]>([]);
+  const [memberSuggestions, setMemberSuggestions] = useState<MemberSuggestion[]>([]);
   const [bookSuggestions, setBookSuggestions] = useState<BookSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -344,10 +514,19 @@ function SmartSearchInput({
 
   const list = selectedMember ? bookSuggestions : memberSuggestions;
 
-  /* Reset sorotan saat hasil berubah */
+  // Indeks item yang boleh disorot/dipilih (buku yang tidak tersedia dilewati)
+  const selectable = useMemo<number[]>(
+    () =>
+      selectedMember
+        ? bookSuggestions.flatMap((b, i) => (isAvailableStatus(b.status) ? [i] : []))
+        : memberSuggestions.map((_, i) => i),
+    [selectedMember, bookSuggestions, memberSuggestions]
+  );
+
+  /* Setiap hasil baru muncul: sorot item paling atas agar bisa langsung di-Enter */
   useEffect(() => {
-    setSelectedIndex(-1);
-  }, [memberSuggestions, bookSuggestions]);
+    setSelectedIndex(selectable.length > 0 ? selectable[0] : -1);
+  }, [selectable]);
 
   /* Bersihkan input & hasil setiap anggota berganti / dibatalkan */
   useEffect(() => {
@@ -463,9 +642,11 @@ function SmartSearchInput({
         const results = await fetchMembers(term);
         if (reqId !== searchReqRef.current) return;
 
+        const lowered = term.toLowerCase();
         const match =
-          results.find((m) => m.nis.toLowerCase() === term.toLowerCase()) ??
-          (results.length === 1 ? results[0] : undefined);
+          results.find(
+            (m) => m.nis.toLowerCase() === lowered || m.loan?.kode.toLowerCase() === lowered
+          ) ?? (results.length === 1 ? results[0] : undefined);
 
         if (match) {
           await handleSelectMember(match);
@@ -498,21 +679,30 @@ function SmartSearchInput({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const total = list.length;
+  /* Pindah sorotan ke item berikutnya/sebelumnya yang bisa dipilih (berputar) */
+  const moveSelection = (dir: 1 | -1) => {
+    if (isLoading || selectable.length === 0) return;
+    setSelectedIndex((prev) => {
+      const pos = selectable.indexOf(prev);
+      if (pos === -1) return dir === 1 ? selectable[0] : selectable[selectable.length - 1];
+      return selectable[(pos + dir + selectable.length) % selectable.length];
+    });
+  };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        if (total > 0) setSelectedIndex((prev) => (prev < total - 1 ? prev + 1 : 0));
+        moveSelection(1);
         break;
       case 'ArrowUp':
         e.preventDefault();
-        if (total > 0) setSelectedIndex((prev) => (prev > 0 ? prev - 1 : total - 1));
+        moveSelection(-1);
         break;
       case 'Enter': {
         e.preventDefault();
-        if (selectedIndex >= 0 && list[selectedIndex]) {
+        // Saat skeleton tampil, hasil lama bisa usang: jangan dipilih
+        if (!isLoading && selectedIndex >= 0 && list[selectedIndex]) {
           if (!selectedMember) handleSelectMember(memberSuggestions[selectedIndex]);
           else handleSelectBook(bookSuggestions[selectedIndex]);
         } else {
@@ -543,9 +733,12 @@ function SmartSearchInput({
       return;
     }
 
+    // Langsung tampilkan skeleton begitu pengguna mulai mengetik (sebelum debounce selesai)
+    setIsLoading(true);
+    setSelectedIndex(-1);
+
     const timer = setTimeout(async () => {
       const reqId = ++searchReqRef.current;
-      setIsLoading(true);
 
       try {
         if (!selectedMember) {
@@ -559,6 +752,10 @@ function SmartSearchInput({
         }
       } catch (err) {
         console.error('Error fetching search results:', errMessage(err));
+        if (reqId === searchReqRef.current) {
+          setMemberSuggestions([]);
+          setBookSuggestions([]);
+        }
       } finally {
         if (reqId === searchReqRef.current) setIsLoading(false);
       }
@@ -575,20 +772,32 @@ function SmartSearchInput({
       {showDropdown && (
         <div
           ref={dropdownRef}
+          role="listbox"
           className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-blue-100 rounded-2xl p-2 shadow-md z-50 max-h-72 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-blue-200 [&::-webkit-scrollbar-thumb]:rounded-full"
         >
           {isLoading ? (
-            <div className="p-3 text-center text-xs font-bold text-blue-600 flex items-center justify-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Memproses data...</span>
-            </div>
+            <SearchSkeleton variant={selectedMember ? 'book' : 'member'} />
           ) : !selectedMember ? (
             memberSuggestions.map((m, i) => (
-              <MemberItem key={m.id} member={m} index={i} selected={i === selectedIndex} onPick={handleSelectMember} />
+              <MemberItem
+                key={m.id}
+                member={m}
+                index={i}
+                selected={i === selectedIndex}
+                onPick={handleSelectMember}
+                onHover={setSelectedIndex}
+              />
             ))
           ) : (
             bookSuggestions.map((b, i) => (
-              <BookItem key={b.id} book={b} index={i} selected={i === selectedIndex} onPick={handleSelectBook} />
+              <BookItem
+                key={b.id}
+                book={b}
+                index={i}
+                selected={i === selectedIndex}
+                onPick={handleSelectBook}
+                onHover={setSelectedIndex}
+              />
             ))
           )}
         </div>
@@ -625,13 +834,13 @@ function SmartSearchInput({
           <input
             ref={inputRef}
             type="text"
-            aria-label={selectedMember ? 'Cari buku atau scan barcode' : 'Cari anggota'}
+            aria-label={selectedMember ? 'Cari buku atau scan barcode' : 'Cari anggota atau buku yang dipinjam'}
             placeholder={
               disabled
                 ? 'Selesaikan transaksi sebelumnya...'
                 : selectedMember
                 ? 'Scan Barcode / Cari Judul Buku...'
-                : 'Cari Nama / NIS Anggota...'
+                : 'Cari Nama / NIS Anggota / Buku yang Dipinjam...'
             }
             value={query}
             onChange={(e) => setQuery(e.target.value)}

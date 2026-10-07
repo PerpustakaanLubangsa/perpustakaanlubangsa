@@ -12,9 +12,9 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { getNavigationGroups, type MenuItem } from './navigation';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { library } from '@fortawesome/fontawesome-svg-core';
-import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 import {
   fas,
   faChevronUp,
@@ -26,55 +26,13 @@ library.add(fas);
 
 /* ───────────────────────── Types ───────────────────────── */
 
-interface MenuItem {
-  id: number;
-  label: string;
-  icon: string;
-  page_url: string;
-  grup: string;
-  urutan: number;
-}
-
-interface NavGroup {
-  groupName: string;
-  items: MenuItem[];
-}
-
 type SelectionSource = 'mouse' | 'keyboard' | null;
 
 /* ─────────────── Helper murni (di luar komponen) ─────────────── */
 
 const DRAG_THRESHOLD = 5;
-
-/** Hapus .html dan pastikan URL berformat /dashboard/... */
-function normalizeUrl(rawUrl?: string | null): string {
-  let path = '/' + (rawUrl ?? '').trim().replace(/\.html$/i, '').replace(/^\/+/, '');
-  if (!/^\/dashboard(\/|$)/.test(path)) path = `/dashboard${path}`;
-  return path.replace(/\/+/g, '/');
-}
-
-function formatFAIcon(iconString?: string | null): IconProp {
-  if (!iconString) return ['fas', 'question'];
-  const name = iconString
-    .replace(/^fa-(solid|regular|brands)\s+/, '')
-    .replace(/^fa-/, '');
-  return ['fas', name as any];
-}
-
-/** Kelompokkan data (data sudah terurut dari query, urutan grup = urutan kemunculan) */
-function groupMenu(items: MenuItem[]): NavGroup[] {
-  const map = new Map<string, MenuItem[]>();
-  for (const item of items) {
-    const key = item.grup || 'Lainnya';
-    const list = map.get(key);
-    if (list) list.push(item);
-    else map.set(key, [item]);
-  }
-  return Array.from(map, ([groupName, groupItems]) => ({
-    groupName,
-    items: groupItems,
-  }));
-}
+const MIN_THUMB_HEIGHT = 36;
+const SCROLLBAR_HIDE_DELAY = 800;
 
 function isPathActive(pathname: string, url: string): boolean {
   if (pathname === url) return true;
@@ -128,7 +86,7 @@ const MenuLink = memo(function MenuLink({
     >
       <span className="w-5 flex items-center justify-center shrink-0">
         <FontAwesomeIcon
-          icon={formatFAIcon(item.icon)}
+          icon={['fas', item.icon]}
           className={`w-4 h-4 transition-colors duration-150 ${
             isActive
               ? 'text-white'
@@ -151,8 +109,6 @@ export default function Sidebar() {
 
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [navigationGroups, setNavigationGroups] = useState<NavGroup[]>([]);
-  const [menuLoading, setMenuLoading] = useState(true);
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [isGrabbing, setIsGrabbing] = useState(false);
@@ -160,12 +116,31 @@ export default function Sidebar() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(-1);
 
+  // Status scrollbar custom
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const [canScrollUp, setCanScrollUp] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const [scrollbarVisible, setScrollbarVisible] = useState(false);
+  const [isThumbDragging, setIsThumbDragging] = useState(false);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<Record<number, HTMLAnchorElement | null>>({});
   const selectionSource = useRef<SelectionSource>(null);
   const keyboardNav = useRef(false);
   const dragInfo = useRef({ isDown: false, moved: false, startY: 0, scrollTop: 0 });
+
+  const hoverNav = useRef(false);
+  const thumbDragging = useRef(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Menu kini statis (dari @/lib/navigation), jadi cukup menunggu autentikasi.
+  // Nanti bisa difilter per peran: getNavigationGroups(role)
+  const navigationGroups = useMemo(() => getNavigationGroups(), []);
+
+  const ready = !authLoading && !!user;
 
   /* Helper: hapus sorotan */
   const clearSelection = useCallback(() => {
@@ -190,42 +165,7 @@ export default function Sidebar() {
     return () => subscription.unsubscribe();
   }, [router]);
 
-  /* 2. Ambil menu navigasi (hanya kolom yang dipakai) */
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('navigasi_menu')
-          .select('id, label, icon, page_url, grup, urutan')
-          .eq('is_active', true)
-          .order('urutan', { ascending: true });
-
-        if (cancelled) return;
-        if (error) {
-          console.error('Gagal mengambil data menu:', error.message);
-          return;
-        }
-
-        const cleaned = (data as MenuItem[]).map((item) => ({
-          ...item,
-          page_url: normalizeUrl(item.page_url),
-        }));
-        setNavigationGroups(groupMenu(cleaned));
-      } catch (err) {
-        console.error('Terjadi kesalahan:', err);
-      } finally {
-        if (!cancelled) setMenuLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /* 3. Filter pencarian */
+  /* 2. Filter pencarian */
   const filteredGroups = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return navigationGroups;
@@ -258,7 +198,7 @@ export default function Sidebar() {
     clearSelection();
   }, [pathname, clearSelection]);
 
-  /* 4. Scroll ke item terpilih (hanya saat navigasi keyboard) */
+  /* 3. Scroll ke item terpilih (hanya saat navigasi keyboard) */
   useEffect(() => {
     if (!keyboardNav.current || activeIndex < 0) return;
     const id = flatItems[activeIndex]?.id;
@@ -267,6 +207,183 @@ export default function Sidebar() {
     }
     keyboardNav.current = false;
   }, [activeIndex, flatItems]);
+
+  /* ─────────────── Scrollbar custom ─────────────── */
+
+  /** Sinkronkan ukuran & posisi thumb + status fade atas/bawah */
+  const updateScrollbar = useCallback(() => {
+    const c = scrollContainerRef.current;
+    if (!c) return;
+
+    const { scrollTop, scrollHeight, clientHeight } = c;
+    const maxScroll = scrollHeight - clientHeight;
+    const scrollable = maxScroll > 1;
+
+    setHasOverflow(scrollable);
+    setCanScrollUp(scrollTop > 1);
+    setCanScrollDown(scrollTop < maxScroll - 1);
+
+    const track = trackRef.current;
+    const thumb = thumbRef.current;
+    if (!track || !thumb || !scrollable) return;
+
+    const trackH = track.clientHeight;
+    const thumbH = Math.min(
+      trackH,
+      Math.max(MIN_THUMB_HEIGHT, (clientHeight / scrollHeight) * trackH)
+    );
+    const top = (trackH - thumbH) * (scrollTop / maxScroll);
+
+    thumb.style.height = `${thumbH}px`;
+    thumb.style.transform = `translateY(${top}px)`;
+  }, []);
+
+  const clearHideTimer = useCallback(() => {
+    if (hideTimer.current) {
+      clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  }, []);
+
+  const scheduleHide = useCallback(() => {
+    clearHideTimer();
+    if (hoverNav.current || thumbDragging.current) return;
+    hideTimer.current = setTimeout(
+      () => setScrollbarVisible(false),
+      SCROLLBAR_HIDE_DELAY
+    );
+  }, [clearHideTimer]);
+
+  const showScrollbar = useCallback(() => {
+    setScrollbarVisible(true);
+    scheduleHide();
+  }, [scheduleHide]);
+
+  // Pasang listener scroll + observer ukuran
+  useEffect(() => {
+    if (!ready) return;
+    const c = scrollContainerRef.current;
+    if (!c) return;
+
+    const onScroll = () => {
+      updateScrollbar();
+      showScrollbar();
+    };
+
+    c.addEventListener('scroll', onScroll, { passive: true });
+
+    const ro = new ResizeObserver(updateScrollbar);
+    ro.observe(c);
+    if (c.firstElementChild) ro.observe(c.firstElementChild);
+
+    updateScrollbar();
+
+    return () => {
+      c.removeEventListener('scroll', onScroll);
+      ro.disconnect();
+    };
+  }, [ready, filteredGroups, updateScrollbar, showScrollbar]);
+
+  // Bersihkan timer saat unmount
+  useEffect(() => clearHideTimer, [clearHideTimer]);
+
+  // Saat hasil pencarian berubah, kembalikan scroll ke atas
+  useEffect(() => {
+    if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+  }, [searchQuery]);
+
+  // Scroll otomatis ke menu aktif (saat dimuat / pindah halaman / pencarian dihapus)
+  useEffect(() => {
+    if (!ready || searchQuery) return;
+    const c = scrollContainerRef.current;
+    if (!c) return;
+
+    // Jika beberapa item cocok (induk & turunan), pilih URL terpanjang
+    let best: MenuItem | null = null;
+    for (const item of flatItems) {
+      if (
+        isPathActive(pathname, item.page_url) &&
+        (!best || item.page_url.length > best.page_url.length)
+      ) {
+        best = item;
+      }
+    }
+    if (!best) return;
+
+    const el = itemRefs.current[best.id];
+    if (!el) return;
+
+    const cr = c.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
+    const MARGIN = 28; // sisakan ruang agar tidak tertutup fade
+    if (er.top >= cr.top + MARGIN && er.bottom <= cr.bottom - MARGIN) return;
+
+    c.scrollTop += er.top - cr.top - (cr.height - er.height) / 2;
+  }, [ready, pathname, searchQuery, flatItems]);
+
+  const handleNavMouseEnter = () => {
+    hoverNav.current = true;
+    clearHideTimer();
+    setScrollbarVisible(true);
+  };
+
+  const handleNavMouseLeave = () => {
+    hoverNav.current = false;
+    scheduleHide();
+  };
+
+  /** Drag thumb scrollbar */
+  const handleThumbMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const c = scrollContainerRef.current;
+    const track = trackRef.current;
+    const thumb = thumbRef.current;
+    if (!c || !track || !thumb) return;
+
+    const startY = e.clientY;
+    const startScrollTop = c.scrollTop;
+    const ratio =
+      (c.scrollHeight - c.clientHeight) /
+      Math.max(1, track.clientHeight - thumb.offsetHeight);
+
+    thumbDragging.current = true;
+    setIsThumbDragging(true);
+    clearHideTimer();
+
+    const onMove = (ev: MouseEvent) => {
+      c.scrollTop = startScrollTop + (ev.clientY - startY) * ratio;
+    };
+    const onUp = () => {
+      thumbDragging.current = false;
+      setIsThumbDragging(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      scheduleHide();
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  /** Klik pada track: lompat ke posisi tersebut */
+  const handleTrackMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const c = scrollContainerRef.current;
+    const thumb = thumbRef.current;
+    if (!c || !thumb) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const thumbH = thumb.offsetHeight;
+    const maxTop = Math.max(1, rect.height - thumbH);
+    const pct = Math.min(1, Math.max(0, (e.clientY - rect.top - thumbH / 2) / maxTop));
+    c.scrollTop = pct * (c.scrollHeight - c.clientHeight);
+  };
 
   /* ───────────── Handler (stabil dengan useCallback) ───────────── */
 
@@ -385,7 +502,7 @@ export default function Sidebar() {
 
   /* ───────────────────────── Render ───────────────────────── */
 
-  if (authLoading || menuLoading || !user) {
+  if (!ready || !user) {
     return (
       <div className="hidden md:flex w-72 bg-blue-50 border-r border-blue-100 rounded-r-[32px] h-screen fixed top-0 left-0 z-50 items-center justify-center">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
@@ -394,6 +511,7 @@ export default function Sidebar() {
   }
 
   const email = user.email ?? '';
+  const showTrack = hasOverflow && (scrollbarVisible || isThumbDragging);
 
   return (
     <aside
@@ -450,49 +568,90 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* AREA NAVIGASI */}
+        {/* AREA NAVIGASI (dengan scrollbar custom) */}
         <div
-          ref={scrollContainerRef}
-          onMouseDown={handleMouseDown}
-          onMouseLeave={handleContainerLeave}
-          onMouseUp={handleMouseUp}
-          onMouseMove={handleMouseMove}
-          className="flex-1 overflow-y-auto overflow-x-hidden py-2 [overscroll-behavior:contain] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          style={isGrabbing ? { cursor: 'grabbing' } : undefined}
+          className="relative flex-1 min-h-0"
+          onMouseEnter={handleNavMouseEnter}
+          onMouseLeave={handleNavMouseLeave}
         >
-          <div className="px-3 space-y-4">
-            {filteredGroups.length > 0 ? (
-              filteredGroups.map((group) => (
-                <div key={group.groupName} className="space-y-1">
-                  <div className="h-4 flex items-center">
-                    <span className="text-[10px] font-extrabold tracking-widest text-blue-500 uppercase whitespace-nowrap pl-3">
-                      {group.groupName}
-                    </span>
-                  </div>
+          <div
+            ref={scrollContainerRef}
+            onMouseDown={handleMouseDown}
+            onMouseLeave={handleContainerLeave}
+            onMouseUp={handleMouseUp}
+            onMouseMove={handleMouseMove}
+            className="h-full overflow-y-auto overflow-x-hidden py-2 scroll-py-6 [overscroll-behavior:contain] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            style={isGrabbing ? { cursor: 'grabbing' } : undefined}
+          >
+            <div className="px-3 pr-4 space-y-4">
+              {filteredGroups.length > 0 ? (
+                filteredGroups.map((group) => (
+                  <div key={group.groupName || 'utama'} className="space-y-1">
+                    {/* Judul grup hanya tampil jika grup punya nama */}
+                    {group.groupName && (
+                      <div className="h-4 flex items-center">
+                        <span className="text-[10px] font-extrabold tracking-widest text-blue-500 uppercase whitespace-nowrap pl-3">
+                          {group.groupName}
+                        </span>
+                      </div>
+                    )}
 
-                  {group.items.map((item) => {
-                    const index = indexById.get(item.id) ?? -1;
-                    return (
-                      <MenuLink
-                        key={item.id}
-                        item={item}
-                        index={index}
-                        isActive={isPathActive(pathname, item.page_url)}
-                        isSelected={activeIndex === index}
-                        onHover={handleHover}
-                        onLeave={handleItemLeave}
-                        registerRef={registerRef}
-                        shouldBlockClick={shouldBlockClick}
-                      />
-                    );
-                  })}
+                    {group.items.map((item) => {
+                      const index = indexById.get(item.id) ?? -1;
+                      return (
+                        <MenuLink
+                          key={item.id}
+                          item={item}
+                          index={index}
+                          isActive={isPathActive(pathname, item.page_url)}
+                          isSelected={activeIndex === index}
+                          onHover={handleHover}
+                          onLeave={handleItemLeave}
+                          registerRef={registerRef}
+                          shouldBlockClick={shouldBlockClick}
+                        />
+                      );
+                    })}
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4 text-xs text-slate-500 font-medium">
+                  Menu tidak ditemukan
                 </div>
-              ))
-            ) : (
-              <div className="text-center py-4 text-xs text-slate-500 font-medium">
-                Menu tidak ditemukan
-              </div>
-            )}
+              )}
+            </div>
+          </div>
+
+          {/* Fade penanda masih ada menu di atas / bawah */}
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute top-0 inset-x-0 h-6 z-10 bg-gradient-to-b from-blue-50 to-transparent transition-opacity duration-200 ${
+              canScrollUp ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute bottom-0 inset-x-0 h-6 z-10 bg-gradient-to-t from-blue-50 to-transparent transition-opacity duration-200 ${
+              canScrollDown ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+
+          {/* Track + thumb scrollbar custom */}
+          <div
+            ref={trackRef}
+            onMouseDown={handleTrackMouseDown}
+            aria-hidden
+            className={`absolute right-0.5 top-1 bottom-1 w-3 z-20 rounded-full transition-opacity duration-200 ${
+              showTrack ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
+          >
+            <div
+              ref={thumbRef}
+              onMouseDown={handleThumbMouseDown}
+              className={`absolute top-0 inset-x-[3px] rounded-full cursor-pointer transition-[background-color,left,right] duration-150 hover:inset-x-0.5 ${
+                isThumbDragging ? 'bg-blue-500 inset-x-0.5' : 'bg-blue-300 hover:bg-blue-500'
+              }`}
+            />
           </div>
         </div>
 

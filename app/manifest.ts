@@ -2,12 +2,12 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    id: "/dashboard/sirkulasi",
+    id: "/",
     name: "Perpustakaan Lubangsa",
     short_name: "Perpustakaan",
-    description: "Sistem Informasi Perpustakaan Lubangsa: sirkulasi peminjaman dan pengembalian buku.",
+    description: "Sistem Informasi Perpustakaan Lubangsa: katalog buku, sirkulasi peminjaman dan pengembalian.",
     lang: "id",
-    start_url: "/dashboard/sirkulasi",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "any",
