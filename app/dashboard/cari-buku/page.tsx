@@ -1,14 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Loader2, BookX, Image as ImageIcon, ChevronLeft, ChevronRight } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-import BookDetailModal from '@/app/components/book-detail-modal'; 
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { Search, Loader2, BookX, Image as ImageIcon, ArrowUp } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
-// Inisialisasi Supabase Client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Modal hanya dimuat saat pertama kali dibuka
+const BookDetailModal = dynamic(() => import('@/app/components/book-detail-modal'), {
+  ssr: false,
+});
+
+/* ───────────────────────── Types & konstanta ───────────────────────── */
 
 interface Book {
   id: string;
@@ -28,401 +30,340 @@ interface Book {
   jumlah_pinjam: number;
 }
 
-const ITEMS_PER_PAGE = 25;
+const ITEMS_PER_PAGE = 24; // kelipatan 4 agar baris terakhir selalu penuh
+const BOOK_COLUMNS =
+  'id, judul, penulis, isbn_issn, penerbit, tahun_terbit, deskripsi_fisik, sampul_url, abstrak, kategori, topik, created_at, updated_at, jumlah_baca, jumlah_pinjam';
 
-function LazyImage({ src, alt }: { src: string; alt: string }) {
-  const [inView, setInView] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const imgRef = useRef<HTMLDivElement>(null);
+const SHOW_SCROLL_TOP_AFTER = 400; // px
 
-  useEffect(() => {
-    const el = imgRef.current;
-    if (!el) return;
+const PAGE_CSS = `
+  @keyframes dots { from { width: 0; } to { width: 1.1em; } }
+  .dots { display: inline-block; overflow: hidden; vertical-align: bottom; width: 0; animation: dots 1.2s steps(4, end) infinite; }
+  @media (prefers-reduced-motion: reduce) { .dots { animation: none; width: 1.1em; } }
+`;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setInView(true);
-          observer.unobserve(el);
-        }
-      },
-      { rootMargin: '100px' }
-    );
+/* ───────────────────────── Helper ───────────────────────── */
 
-    observer.observe(el);
-    return () => observer.disconnect();
+// Buang karakter yang merusak sintaks filter .or() PostgREST
+const sanitizeSearch = (value: string) =>
+  value.replace(/[,()%*\\"]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/* ───────────────────────── Komponen kecil ───────────────────────── */
+
+const CoverImage = memo(function CoverImage({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  // Tangani gambar yang sudah ada di cache sebelum onLoad terpasang
+  const setRef = useCallback((img: HTMLImageElement | null) => {
+    if (img && img.complete && img.naturalWidth > 0) setLoaded(true);
   }, []);
 
   return (
-    <div ref={imgRef} className="w-full h-full bg-slate-950/80 relative overflow-hidden flex items-center justify-center">
-      {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center text-slate-700">
+    <div className="w-full h-full bg-blue-50 relative overflow-hidden flex items-center justify-center">
+      {(!loaded || failed) && (
+        <div className="absolute inset-0 flex items-center justify-center text-blue-200">
           <ImageIcon className="h-8 w-8 stroke-[1.2]" />
         </div>
       )}
-      
-      {inView && (
+      {!failed && (
         <img
+          ref={setRef}
           src={src}
           alt={alt}
-          onLoad={() => setIsLoaded(true)}
-          className={`w-full h-full object-cover transition-opacity duration-300 ease-out ${
-            isLoaded ? 'opacity-100' : 'opacity-0'
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setLoaded(true)}
+          onError={() => setFailed(true)}
+          className={`w-full h-full object-cover transition-opacity duration-300 ${
+            loaded ? 'opacity-100' : 'opacity-0'
           }`}
         />
       )}
     </div>
   );
+});
+
+const BookCard = memo(function BookCard({
+  book,
+  onSelect,
+}: {
+  book: Book;
+  onSelect: (book: Book) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(book)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect(book);
+        }
+      }}
+      // content-visibility: kartu di luar layar tidak dirender, scroll lebih ringan
+      className="group flex flex-col cursor-pointer bg-white border border-blue-100 rounded-2xl p-2 transition-[transform,border-color] duration-200 hover:-translate-y-1 hover:border-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 [content-visibility:auto] [contain-intrinsic-size:auto_400px]"
+    >
+      <div className="relative aspect-[3/4] overflow-hidden rounded-xl border border-blue-100">
+        {book.sampul_url ? (
+          <CoverImage src={book.sampul_url} alt={book.judul} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-xs text-blue-300 bg-blue-50">
+            Tanpa Sampul
+          </div>
+        )}
+      </div>
+
+      <div className="pt-3 pb-1 px-1 flex flex-col flex-grow justify-between">
+        <div>
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            <span className="inline-block px-1.5 py-0.5 text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100 rounded">
+              {book.kategori || 'Umum'}
+            </span>
+            {book.topik.slice(0, 2).map((t) => (
+              <span
+                key={t}
+                className="inline-block px-1.5 py-0.5 text-[10px] font-medium bg-white text-slate-500 rounded border border-blue-100"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+          <h2 className="text-sm font-bold text-slate-800 line-clamp-2 leading-snug group-hover:text-blue-700 transition-colors">
+            {book.judul}
+          </h2>
+        </div>
+        <p className="text-xs text-slate-500 mt-1 truncate">{book.penulis || 'Anonim'}</p>
+      </div>
+    </div>
+  );
+});
+
+function SkeletonCard() {
+  return (
+    <div className="flex flex-col bg-white border border-blue-100 rounded-2xl p-2 animate-pulse">
+      <div className="aspect-[3/4] rounded-xl bg-blue-100" />
+      <div className="pt-3 pb-1 space-y-2 px-1">
+        <div className="h-3 w-16 rounded bg-blue-100" />
+        <div className="h-4 w-full rounded bg-blue-100" />
+        <div className="h-3 w-24 rounded bg-blue-100" />
+      </div>
+    </div>
+  );
 }
+
+/* Tombol kembali ke atas: state hanya berubah saat melewati ambang, bukan tiap scroll */
+const ScrollTopButton = memo(function ScrollTopButton() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    let ticking = false;
+
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        setVisible(window.scrollY > SHOW_SCROLL_TOP_AFTER);
+        ticking = false;
+      });
+    };
+
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const handleClick = () => {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-label="Kembali ke atas"
+      tabIndex={visible ? 0 : -1}
+      className={`fixed bottom-6 right-6 z-40 w-11 h-11 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 text-white border border-blue-700 transition-[opacity,transform,background-color] duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3 pointer-events-none'
+      }`}
+    >
+      <ArrowUp className="w-5 h-5 stroke-[2.5]" />
+    </button>
+  );
+});
+
+/* ───────────────────────── Halaman ───────────────────────── */
 
 export default function HomePage() {
   const [books, setBooks] = useState<Book[]>([]);
-  const [categories, setCategories] = useState<string[]>(['Semua']);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Semua');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
-  const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(false);
-  const [isSearchingUI, setIsSearchingUI] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
-  const [loadingText, setLoadingText] = useState('mencari.');
-  const [isScrolledDown, setIsScrolledDown] = useState(false);
 
-  const observer = useRef<IntersectionObserver | null>(null);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef(0);
+  const loadingRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const searchRef = useRef('');
 
-  // Ambil list Kategori Unik dari data Buku di Supabase saat komponen dipasang
+  // Status "mencari" diturunkan dari state, tidak perlu state terpisah
+  const isSearchingUI = searchQuery.trim() !== debouncedSearchQuery;
+
+  /* Debounce pencarian */
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('biblio')
-          .select('kategori');
-        
-        if (error) throw error;
-        
-        if (data) {
-          const rawCategories = data
-            .map((item) => item.kategori)
-            .filter((kat): kat is string => !!kat && kat.trim() !== '');
-            
-          const uniqueCategories = Array.from(new Set(rawCategories)).sort();
-          setCategories(['Semua', ...uniqueCategories]);
-        }
-      } catch (err) {
-        console.error('Gagal memuat kategori dari database:', err);
-      }
-    };
+    const value = searchQuery.trim();
+    if (value === debouncedSearchQuery) return;
 
-    fetchCategories();
-  }, []);
-
-  // Efek menyembunyikan tag kategori saat scroll down
-  useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > 40) {
-        setIsScrolledDown(true);
-      } else {
-        setIsScrolledDown(false);
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Animasi Teks Titik-Titik Berjalan
-  useEffect(() => {
-    if (!isSearchingUI) return;
-
-    const texts = ['mencari.', 'mencari..', 'mencari...'];
-    let count = 0;
-
-    const interval = setInterval(() => {
-      count = (count + 1) % texts.length;
-      setLoadingText(texts[count]);
-    }, 400);
-
-    return () => clearInterval(interval);
-  }, [isSearchingUI]);
-
-  // Efek Debounce Jeda Pengetikan
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setDebouncedSearchQuery('');
-      setIsSearchingUI(false);
-      return;
-    }
-
-    const handler = setTimeout(() => {
-      setDebouncedSearchQuery(searchQuery);
-    }, 500);
-
+    const delay = value === '' ? 0 : 400;
+    const handler = setTimeout(() => setDebouncedSearchQuery(value), delay);
     return () => clearTimeout(handler);
-  }, [searchQuery]);
-  
-  // Fungsi fetch data dari Supabase
-  const fetchBooks = useCallback(async (currentPage: number, search: string, category: string, isNewSearch = false) => {
+  }, [searchQuery, debouncedSearchQuery]);
+
+  /* Ambil data buku. requestId mencegah respons lama menimpa respons baru */
+  const fetchBooks = useCallback(async (pageNum: number, search: string, reset: boolean) => {
+    const reqId = ++requestIdRef.current;
+    loadingRef.current = true;
     setLoading(true);
 
     try {
-      const from = currentPage * ITEMS_PER_PAGE;
+      const from = pageNum * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
+      const term = sanitizeSearch(search);
 
       let query = supabase
         .from('biblio')
-        .select('id, judul, penulis, isbn_issn, penerbit, tahun_terbit, deskripsi_fisik, sampul_url, abstrak, kategori, topik, created_at, updated_at, jumlah_baca, jumlah_pinjam')
+        .select(BOOK_COLUMNS)
         .order('created_at', { ascending: false })
         .range(from, to);
 
-      if (search) {
-        if (category !== 'Semua') {
-          query = query.eq('kategori', category).or(`judul.ilike.%${search}%,penulis.ilike.%${search}%`);
-        } else {
-          query = query.or(`judul.ilike.%${search}%,penulis.ilike.%${search}%,kategori.ilike.%${search}%`);
-        }
-      } else if (category !== 'Semua') {
-        query = query.eq('kategori', category);
+      if (term) {
+        query = query.or(
+          `judul.ilike.%${term}%,penulis.ilike.%${term}%,kategori.ilike.%${term}%`
+        );
       }
 
       const { data, error } = await query;
       if (error) throw error;
+      if (reqId !== requestIdRef.current) return;
 
-      if (data) {
-        const mappedData: Book[] = data.map((b) => ({
-          ...b,
-          topik: Array.isArray(b.topik) ? b.topik : [],
-        }));
+      const mapped: Book[] = (data ?? []).map((b) => ({
+        ...b,
+        topik: Array.isArray(b.topik) ? b.topik : [],
+      }));
 
-        setBooks((prev) => (isNewSearch ? mappedData : [...prev, ...mappedData]));
-        setHasMore(data.length === ITEMS_PER_PAGE);
-      }
+      pageRef.current = pageNum;
+      setBooks((prev) => (reset ? mapped : [...prev, ...mapped]));
+      setHasMore(mapped.length === ITEMS_PER_PAGE);
     } catch (err) {
       console.error('Gagal mengambil data biblio:', err);
+      if (reqId === requestIdRef.current) setHasMore(false);
     } finally {
-      setLoading(false);
-      setIsSearchingUI(false);
+      if (reqId === requestIdRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
   }, []);
 
-  // Trigger Pencarian Baru saat Query atau Tag Kategori Berubah
+  /* Muat ulang saat pencarian berubah */
   useEffect(() => {
-    setPage(0);
+    searchRef.current = debouncedSearchQuery;
+    pageRef.current = 0;
     setHasMore(true);
-    fetchBooks(0, debouncedSearchQuery, selectedCategory, true);
-  }, [debouncedSearchQuery, selectedCategory, fetchBooks]);
+    fetchBooks(0, debouncedSearchQuery, true);
+  }, [debouncedSearchQuery, fetchBooks]);
 
-  // Infinite scroll
-  const lastBookElementRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      if (loading) return;
-      if (observer.current) observer.current.disconnect();
+  /* Infinite scroll: satu observer pada elemen sentinel di bawah grid */
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
 
-      observer.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && hasMore) {
-          const nextPage = page + 1;
-          setPage(nextPage);
-          fetchBooks(nextPage, debouncedSearchQuery, selectedCategory, false);
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !loadingRef.current) {
+          fetchBooks(pageRef.current + 1, searchRef.current, false);
         }
-      });
+      },
+      { rootMargin: '400px' }
+    );
 
-      if (node) observer.current.observe(node);
-    },
-    [loading, hasMore, page, debouncedSearchQuery, selectedCategory, fetchBooks]
-  );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, books.length, fetchBooks]);
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    if (e.target.value.trim() !== '') {
-      setIsSearchingUI(true);
-    }
-  };
-
-  // Fungsi menggeser menu tag kategori ke kiri/kanan menggunakan tombol panah
-  const handleScrollCategories = (direction: 'left' | 'right') => {
-    if (scrollContainerRef.current) {
-      const scrollAmount = 200;
-      scrollContainerRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth',
-      });
-    }
-  };
+  const showSkeleton = loading && books.length === 0;
+  const showEmpty = !loading && books.length === 0;
 
   return (
-    <main className="min-h-screen bg-[#0b0c10] text-slate-100 p-2 sm:p-4">
-      {/* CSS internal untuk menyembunyikan scrollbar bawaan browser */}
-      <style dangerouslySetInnerHTML={{__html: `
-        .hide-scrollbar::-webkit-scrollbar {
-          display: none;
-        }
-        .hide-scrollbar {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-      `}} />
+    // Tanpa background: bg.png dari layout.tsx langsung terlihat
+    <main className="min-h-screen text-slate-800">
+      <style>{PAGE_CSS}</style>
 
-      <div className="w-full max-w-full mx-auto flex flex-col">
-        
-        {/* Header Kunci/Beku (Fixed Top) */}
-        <header className="fixed top-0 left-20 right-0 z-40 bg-[#0b0c10]/95 backdrop-blur-md px-2 sm:px-4 pt-4 border-b border-slate-800/40">
-          <div className="relative w-full flex items-center">
+      <div className="px-12 pt-6 pb-10">
+        <div className="w-full max-w-6xl mx-auto space-y-6">
+          {/* Pencarian: bagian dari alur halaman, ikut ter-scroll */}
+          <div className="relative flex items-center">
             <input
               type="text"
               value={searchQuery}
-              onChange={handleSearchChange}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Cari buku berdasarkan judul, penulis, atau kategori..."
-              className="w-full h-11 pl-4 pr-32 text-sm bg-slate-900/90 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 transition-all duration-200"
+              aria-label="Cari buku"
+              className="w-full h-11 pl-4 pr-32 text-sm font-medium bg-white border border-blue-100 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-colors"
             />
-            
-            <div className="absolute right-4 pointer-events-none flex items-center gap-2 overflow-hidden h-full">
-              <div 
-                className={`flex items-center gap-1.5 transition-all duration-300 ease-in-out ${
-                  isSearchingUI ? 'transform translate-x-0 opacity-100' : 'transform translate-x-4 opacity-0'
-                }`}
-              >
-                {isSearchingUI && (
-                  <>
-                    <Search className="h-4 w-4 text-cyan-400" />
-                    <span className="text-xs font-medium text-cyan-400 select-none w-16 tabular-nums">
-                      {loadingText}
-                    </span>
-                  </>
-                )}
+
+            <div className="absolute right-4 pointer-events-none flex items-center gap-1.5 text-blue-600">
+              {isSearchingUI && (
+                <span className="text-xs font-semibold select-none">
+                  mencari<span className="dots">...</span>
+                </span>
+              )}
+              <Search className={`h-4 w-4 ${isSearchingUI ? 'text-blue-600' : 'text-blue-400'}`} />
+            </div>
+          </div>
+
+          {showEmpty && (
+            <div className="mx-auto max-w-md bg-white border border-blue-100 rounded-2xl py-10 px-6 flex flex-col items-center text-center">
+              <div className="p-4 bg-blue-50 border border-blue-100 rounded-full text-blue-400 mb-4">
+                <BookX className="h-10 w-10 stroke-[1.5]" />
               </div>
-              {!isSearchingUI && <Search className="h-4 w-4 text-slate-500" />}
+              <h3 className="text-base font-bold text-slate-800 mb-1">Buku Tidak Ditemukan</h3>
+              <p className="text-xs text-slate-500 max-w-sm leading-relaxed">
+                Kami tidak dapat menemukan hasil untuk kata kunci yang dicari.
+              </p>
             </div>
-          </div>
+          )}
 
-          {/* Bar Wrapper Tag Kategori Buku dengan Tombol Navigasi Panah */}
-          <div 
-            className={`relative flex items-center transition-all duration-300 ease-in-out ${
-              isScrolledDown 
-                ? 'max-h-0 opacity-0 pointer-events-none transform -translate-y-2' 
-                : 'max-h-16 opacity-100'
-            }`}
-          >
-            {/* Tombol Geser Kiri */}
-            <button 
-              onClick={() => handleScrollCategories('left')}
-              className="absolute left-0 z-10 p-1 bg-slate-900/90 backdrop-blur-sm rounded-full shadow-md border border-slate-800 text-slate-400 hover:text-slate-100 hover:border-slate-700 transition-colors"
-              aria-label="Scroll kiri"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-
-            {/* Container Item Tag Kategori */}
-            <div 
-              ref={scrollContainerRef}
-              className="flex items-center gap-2 overflow-x-auto py-3 px-7 w-full hide-scrollbar scroll-smooth"
-            >
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-all duration-150 ${
-                    selectedCategory === cat
-                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-[0_0_10px_rgba(6,182,212,0.15)] font-semibold'
-                      : 'bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800 hover:text-slate-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+          {(books.length > 0 || showSkeleton) && (
+            <div className="grid grid-cols-4 gap-5">
+              {showSkeleton
+                ? Array.from({ length: 4 }, (_, i) => <SkeletonCard key={i} />)
+                : books.map((book) => <BookCard key={book.id} book={book} onSelect={setSelectedBook} />)}
             </div>
+          )}
 
-            {/* Tombol Geser Kanan */}
-            <button 
-              onClick={() => handleScrollCategories('right')}
-              className="absolute right-0 z-10 p-1 bg-slate-900/90 backdrop-blur-sm rounded-full shadow-md border border-slate-800 text-slate-400 hover:text-slate-100 hover:border-slate-700 transition-colors"
-              aria-label="Scroll kanan"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        </header>
+          {/* Sentinel infinite scroll */}
+          <div ref={sentinelRef} className="h-px" aria-hidden="true" />
 
-        {/* Kondisi Jika Buku Tidak Ditemukan */}
-        {!loading && books.length === 0 && (
-          <div className="pt-36 pb-12 flex flex-col items-center justify-center text-center px-4">
-            <div className="p-4 bg-slate-900/80 border border-slate-800 rounded-full text-slate-500 mb-4">
-              <BookX className="h-10 w-10 stroke-[1.5]" />
+          {loading && books.length > 0 && (
+            <div className="w-full flex justify-center py-2">
+              <div className="bg-white border border-blue-100 rounded-full p-2">
+                <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+              </div>
             </div>
-            <h3 className="text-base font-semibold text-slate-200 mb-1">
-              Buku Tidak Ditemukan
-            </h3>
-            <p className="text-xs text-slate-400 max-w-sm leading-relaxed">
-              Kami tidak dapat menemukan hasil untuk kata kunci atau kategori terpilih.
-            </p>
-          </div>
-        )}
-
-        {/* Grid Katalog Buku */}
-        {books.length > 0 && (
-          <div className="pt-32 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
-            {books.map((book, index) => {
-              const isLastElement = books.length === index + 1;
-
-              return (
-                <div
-                  key={book.id}
-                  ref={isLastElement ? lastBookElementRef : null}
-                  onClick={() => setSelectedBook(book)}
-                  className="bg-[#0b0c10] rounded-xl overflow-hidden flex flex-col cursor-pointer group transition-all duration-200 hover:-translate-y-1"
-                >
-                  {/* Container Cover Buku */}
-                  <div className="relative aspect-[3/4] bg-slate-900 border border-slate-800/80 overflow-hidden rounded-xl group-hover:border-slate-700/80 transition-colors">
-                    {book.sampul_url ? (
-                      <LazyImage src={book.sampul_url} alt={book.judul} />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">
-                        Tanpa Sampul
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Informasi Buku */}
-                  <div className="pt-3 pb-1 px-1 flex flex-col flex-grow justify-between">
-                    <div>
-                      <div className="flex flex-wrap gap-1 mb-1.5">
-                        <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded">
-                          {book.kategori || 'Umum'}
-                        </span>
-                        {book.topik && book.topik.slice(0, 2).map((t, idx) => (
-                          <span key={idx} className="inline-block px-1.5 py-0.5 text-[10px] font-normal bg-slate-900 text-slate-400 rounded border border-slate-800">
-                            {t}
-                          </span>
-                        ))}
-                      </div>
-                      <h2 className="text-sm font-semibold text-slate-100 line-clamp-2 leading-snug group-hover:text-cyan-400 transition-colors">
-                        {book.judul}
-                      </h2>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1 truncate">
-                      {book.penulis || 'Anonim'}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Indikator Loading Bawah */}
-        {loading && (
-          <div className="w-full flex justify-center py-8">
-            <Loader2 className="h-6 w-6 text-cyan-400 animate-spin" />
-          </div>
-        )}
-        
-        <BookDetailModal 
-          book={selectedBook}
-          isOpen={selectedBook !== null}
-          onClose={() => setSelectedBook(null)}
-        />
-        
+          )}
+        </div>
       </div>
+
+      <ScrollTopButton />
+
+      {selectedBook && (
+        <BookDetailModal book={selectedBook} isOpen onClose={() => setSelectedBook(null)} />
+      )}
     </main>
   );
 }

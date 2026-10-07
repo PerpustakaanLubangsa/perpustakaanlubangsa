@@ -3,23 +3,25 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { 
-  BookOpen, 
-  Users, 
-  FileText, 
-  AlertTriangle, 
-  Plus, 
-  ArrowUpRight, 
+import {
+  BookOpen,
+  Users,
+  FileText,
+  AlertTriangle,
+  Plus,
+  ArrowUpRight,
   ArrowDownLeft,
-  Clock
+  Clock,
 } from 'lucide-react';
 
-// DIKELUARKAN DARI KOMPONEN: Mencegah alokasi memori berulang saat re-render
+// Di luar komponen: tidak dialokasikan ulang setiap render
+const BADGE = 'bg-blue-50 text-blue-600 border border-blue-200';
+
 const STATS = [
-  { title: 'Total Sirkulasi', value: '1,240', info: 'Buku dipinjam bulan ini', icon: BookOpen, color: 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' },
-  { title: 'Kunjungan Santri', value: '312', info: 'Santri hadir hari ini', icon: Users, color: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' },
-  { title: 'Karya Tulis', value: '45', info: 'Menunggu verifikasi', icon: FileText, color: 'bg-amber-500/10 text-amber-400 border border-amber-500/20' },
-  { title: 'Pelanggaran Poin', value: '12', info: 'Sanksi keterlambatan baru', icon: AlertTriangle, color: 'bg-rose-500/10 text-rose-400 border border-rose-500/20' },
+  { title: 'Total Sirkulasi', value: '1,240', info: 'Buku dipinjam bulan ini', icon: BookOpen },
+  { title: 'Kunjungan Santri', value: '312', info: 'Santri hadir hari ini', icon: Users },
+  { title: 'Karya Tulis', value: '45', info: 'Menunggu verifikasi', icon: FileText },
+  { title: 'Pelanggaran Poin', value: '12', info: 'Sanksi keterlambatan baru', icon: AlertTriangle },
 ];
 
 const RECENT_ACTIVITIES = [
@@ -28,26 +30,69 @@ const RECENT_ACTIVITIES = [
   { id: '3', name: 'Zainal Arifin', action: 'Terkena Sanksi Poin', item: 'Terlambat 3 Hari', time: '1 jam yang lalu', type: 'alert' },
 ];
 
+// Semua biru; tipe dibedakan lewat ikon dan kedalaman warna
+const ACTIVITY_STYLE: Record<string, string> = {
+  in: 'bg-blue-50 border-blue-200 text-blue-500',
+  out: 'bg-blue-100 border-blue-300 text-blue-600',
+  alert: 'bg-blue-600 border-blue-600 text-white',
+};
+
+const SHORTCUTS = [
+  { title: 'Verifikasi Karya Santri', desc: '5 dokumen baru masuk' },
+  { title: 'Input Pelanggaran', desc: 'Otomasi poin sanksi Latee' },
+  { title: 'Katalog Buku Utama', desc: 'Total 4,120 Judul Terdaftar' },
+];
+
+// Kartu solid: tanpa transparansi dan tanpa blur agar ringan di perangkat low-end
+const CARD = 'bg-white border border-slate-200 shadow-sm';
+
+const TITLE = 'Ahlan Wa Sahlan, Pustakawan!';
+const SUBTITLE = 'Berikut adalah rangkuman aktivitas sirkulasi dan literasi hari ini.';
+
+// Kata muncul satu per satu. Hanya opacity + transform (dipercepat GPU, murah)
+function AnimatedWords({
+  text,
+  startDelay = 0,
+  step = 60,
+}: {
+  text: string;
+  startDelay?: number;
+  step?: number;
+}) {
+  return (
+    <>
+      {text.split(' ').map((word, i) => (
+        <React.Fragment key={i}>
+          <span
+            className="word-in inline-block"
+            style={{ animationDelay: `${startDelay + i * step}ms` }}
+          >
+            {word}
+          </span>{' '}
+        </React.Fragment>
+      ))}
+    </>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Proteksi Halaman
+  // Proteksi halaman
   useEffect(() => {
     let isMounted = true;
-    const checkUser = async () => {
+
+    (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!isMounted) return;
-      
+
       if (!session) {
-        router.push('/login');
+        router.replace('/login');
       } else {
-        setUser(session.user);
         setLoading(false);
       }
-    };
-    checkUser();
+    })();
 
     return () => {
       isMounted = false;
@@ -56,77 +101,92 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0b0c10] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-400" />
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#0b0c10] text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen text-slate-800 flex flex-col font-sans">
+      <style>{`
+        @keyframes word-in {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .word-in {
+          opacity: 0;
+          animation: word-in 0.25s ease-out forwards;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .word-in { opacity: 1; animation: none; }
+        }
+      `}</style>
+
       <main className="flex-1 p-6 max-w-7xl w-full mx-auto space-y-6">
-        
-        {/* Selamat Datang & Bar Pencarian */}
+
+        {/* Selamat Datang */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-black text-slate-100 tracking-tight">Ahlan Wa Sahlan, Pustakawan!</h2>
-            <p className="text-xs text-slate-400 font-medium">Berikut adalah rangkuman aktivitas sirkulasi dan literasi hari ini.</p>
+            <h2 className="text-xl font-black text-white tracking-tight [text-shadow:0_1px_3px_rgba(0,0,0,0.35)]">
+              <AnimatedWords text={TITLE} step={70} />
+            </h2>
+            <p className="text-xs text-white font-medium [text-shadow:0_1px_2px_rgba(0,0,0,0.35)]">
+              <AnimatedWords text={SUBTITLE} startDelay={320} step={35} />
+            </p>
           </div>
-          
-          {/* Menu Akses Cepat */}
+
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors active:scale-95">
+            <button className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-colors active:scale-95">
               <Plus className="w-3.5 h-3.5 stroke-[3]" /> Sirkulasi Baru
             </button>
           </div>
         </div>
 
-        {/* GRID KARTU STATISTIK */}
+        {/* Kartu Statistik */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {STATS.map((stat, i) => (
-            <div key={i} className="bg-slate-900 border border-slate-800 p-5 rounded-2xl flex items-start justify-between">
+          {STATS.map((stat) => (
+            <div key={stat.title} className={`${CARD} p-5 rounded-2xl flex items-start justify-between`}>
               <div className="space-y-1">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">{stat.title}</span>
-                <span className="text-2xl font-black text-slate-100 tracking-tight block">{stat.value}</span>
-                <span className="text-[10px] text-slate-400 font-medium block">{stat.info}</span>
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">{stat.title}</span>
+                <span className="text-2xl font-black text-slate-900 tracking-tight block">{stat.value}</span>
+                <span className="text-[10px] text-slate-500 font-medium block">{stat.info}</span>
               </div>
-              <div className={`w-10 h-10 ${stat.color} rounded-xl flex items-center justify-center shrink-0`}>
+              <div className={`w-10 h-10 ${BADGE} rounded-xl flex items-center justify-center shrink-0`}>
                 <stat.icon className="w-5 h-5" />
               </div>
             </div>
           ))}
         </div>
 
-        {/* PANEL AKTIVITAS & PENCARIAN CEPAT */}
+        {/* Panel Aktivitas & Pintasan */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Kolom Kiri & Tengah: Log Sirkulasi Terakhir */}
-          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-            <div className="p-5 flex items-center justify-between border-b border-slate-800">
+
+          {/* Log Aktivitas */}
+          <div className={`lg:col-span-2 ${CARD} rounded-2xl overflow-hidden`}>
+            <div className="p-5 flex items-center justify-between border-b border-slate-200">
               <div>
-                <h3 className="text-sm font-black text-slate-100 uppercase tracking-tight">Log Aktivitas Terakhir</h3>
-                <p className="text-[11px] text-slate-400 font-medium">Pemantauan real-time sirkulasi santri</p>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Log Aktivitas Terakhir</h3>
+                <p className="text-[11px] text-slate-500 font-medium">Pemantauan real-time sirkulasi santri</p>
               </div>
-              <span className="text-[10px] font-bold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2.5 py-1 rounded-md uppercase tracking-wider">
+              <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-md uppercase tracking-wider">
                 Live View
               </span>
             </div>
 
-            <div className="divide-y divide-slate-800/60">
+            <div className="divide-y divide-slate-200">
               {RECENT_ACTIVITIES.map((act) => (
-                <div key={act.id} className="p-4 flex items-center justify-between hover:bg-slate-800/50 transition-colors">
+                <div key={act.id} className="p-4 flex items-center justify-between hover:bg-blue-50 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${
-                      act.type === 'in' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 
-                      act.type === 'out' ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                    }`}>
-                      {act.type === 'in' ? <ArrowDownLeft className="w-4 h-4" /> : 
-                       act.type === 'out' ? <ArrowUpRight className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${ACTIVITY_STYLE[act.type]}`}>
+                      {act.type === 'in' ? <ArrowDownLeft className="w-4 h-4" /> :
+                       act.type === 'out' ? <ArrowUpRight className="w-4 h-4" /> :
+                       <AlertTriangle className="w-4 h-4" />}
                     </div>
                     <div>
-                      <span className="text-xs font-black text-slate-200 block">{act.name}</span>
-                      <span className="text-[11px] text-slate-400 font-medium">
-                        {act.action} <span className="font-bold text-slate-300">“{act.item}”</span>
+                      <span className="text-xs font-black text-slate-900 block">{act.name}</span>
+                      <span className="text-[11px] text-slate-600 font-medium">
+                        {act.action} <span className="font-bold text-slate-800">“{act.item}”</span>
                       </span>
                     </div>
                   </div>
@@ -138,42 +198,30 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Kolom Kanan: Pintasan Validasi & Sistem */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
+          {/* Pintasan Validasi */}
+          <div className={`${CARD} rounded-2xl p-5 space-y-4`}>
             <div>
-              <h3 className="text-sm font-black text-slate-100 uppercase tracking-tight">Pintasan Validasi</h3>
-              <p className="text-[11px] text-slate-400 font-medium">Akses cepat menu administratif</p>
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Pintasan Validasi</h3>
+              <p className="text-[11px] text-slate-500 font-medium">Akses cepat menu administratif</p>
             </div>
 
             <div className="space-y-2">
-              <button className="w-full text-left p-3 rounded-xl bg-slate-950/60 border border-slate-800 hover:bg-slate-800/80 hover:border-cyan-500/30 font-bold transition-colors flex items-center justify-between group">
-                <div>
-                  <span className="text-xs text-slate-200 block group-hover:text-cyan-400 transition-colors">Verifikasi Karya Santri</span>
-                  <span className="text-[10px] text-slate-400 font-medium">5 dokumen baru masuk</span>
-                </div>
-                <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition-colors" />
-              </button>
-
-              <button className="w-full text-left p-3 rounded-xl bg-slate-950/60 border border-slate-800 hover:bg-slate-800/80 hover:border-cyan-500/30 font-bold transition-colors flex items-center justify-between group">
-                <div>
-                  <span className="text-xs text-slate-200 block group-hover:text-cyan-400 transition-colors">Input Pelanggaran</span>
-                  <span className="text-[10px] text-slate-400 font-medium">Otomasi poin sanksi Latee</span>
-                </div>
-                <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition-colors" />
-              </button>
-
-              <button className="w-full text-left p-3 rounded-xl bg-slate-950/60 border border-slate-800 hover:bg-slate-800/80 hover:border-cyan-500/30 font-bold transition-colors flex items-center justify-between group">
-                <div>
-                  <span className="text-xs text-slate-200 block group-hover:text-cyan-400 transition-colors">Katalog Buku Utama</span>
-                  <span className="text-[10px] text-slate-400 font-medium">Total 4,120 Judul Terdaftar</span>
-                </div>
-                <ArrowUpRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition-colors" />
-              </button>
+              {SHORTCUTS.map((item) => (
+                <button
+                  key={item.title}
+                  className="w-full text-left p-3 rounded-xl bg-slate-50 border border-slate-200 hover:bg-blue-50 hover:border-blue-400 font-bold transition-colors flex items-center justify-between group"
+                >
+                  <div>
+                    <span className="text-xs text-slate-800 block group-hover:text-blue-700 transition-colors">{item.title}</span>
+                    <span className="text-[10px] text-slate-500 font-medium">{item.desc}</span>
+                  </div>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+                </button>
+              ))}
             </div>
           </div>
 
         </div>
-
       </main>
     </div>
   );
