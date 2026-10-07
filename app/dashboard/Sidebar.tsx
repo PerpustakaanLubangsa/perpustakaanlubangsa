@@ -18,7 +18,7 @@ import { library } from '@fortawesome/fontawesome-svg-core';
 import {
   fas,
   faChevronUp,
-  faArrowLeft,
+  faChevronLeft,
   faRightFromBracket,
 } from '@fortawesome/free-solid-svg-icons';
 
@@ -520,7 +520,23 @@ export default function Sidebar() {
     >
       <div className="w-full flex flex-col h-full">
         {/* IDENTITAS APLIKASI */}
-        <div className="flex items-center gap-3 h-16 w-full shrink-0 px-5">
+        <div className="relative flex items-center gap-3 h-16 w-full shrink-0 pl-3 pr-5">
+          {/* Tombol kembali: hanya ikon "<"; saat disentuh/hover melebar menutupi brand */}
+          <button
+            type="button"
+            onClick={() => router.push('/')}
+            aria-label="Kembali ke halaman utama"
+            className="group absolute left-2 top-2 bottom-2 z-10 flex items-center gap-2.5 w-7 pl-[7px] overflow-hidden whitespace-nowrap rounded-xl text-blue-600 transition-all duration-200 ease-out hover:w-[calc(100%-1rem)] hover:bg-blue-100 hover:text-blue-800 hover:shadow-sm focus-visible:w-[calc(100%-1rem)] focus-visible:bg-blue-100 focus-visible:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            <FontAwesomeIcon icon={faChevronLeft} className="w-3.5 h-3.5 shrink-0" />
+            <span className="text-[11px] font-bold uppercase tracking-wider opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
+              Kembali ke halaman utama
+            </span>
+          </button>
+
+          {/* Spasi untuk ikon kembali */}
+          <div className="w-7 shrink-0" aria-hidden />
+
           <img
             src="/logo3.png"
             alt="Logo"
@@ -659,7 +675,7 @@ export default function Sidebar() {
         <div className="p-3 shrink-0">
           <div
             className={`bg-white border border-blue-100 rounded-2xl flex flex-col justify-between overflow-hidden transition-all duration-200 w-full ${
-              profileOpen ? 'h-40 p-2 space-y-2' : 'h-14 p-1.5'
+              profileOpen ? 'h-32 p-2 space-y-2' : 'h-14 p-1.5'
             }`}
           >
             <div
@@ -697,22 +713,14 @@ export default function Sidebar() {
             </div>
 
             {profileOpen && (
-              <div className="flex flex-col gap-1.5 pt-2 border-t border-blue-100">
-                <button
-                  type="button"
-                  onClick={() => router.push('/')}
-                  className="w-full flex items-center justify-start gap-2.5 py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-xs font-semibold tracking-wide transition-colors border border-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                >
-                  <FontAwesomeIcon icon={faArrowLeft} className="w-3.5 h-3.5 shrink-0 text-blue-600" />
-                  <span>Halaman Utama</span>
-                </button>
-
+              <div className="pt-2 border-t border-blue-100">
+                {/* Tombol logout: merah & timbul; saat hover/ditekan tampak terpencet */}
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="w-full flex items-center justify-start gap-2.5 py-2 px-3 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-lg text-xs font-semibold tracking-wide transition-colors border border-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                  className="w-full flex items-center justify-center gap-2.5 py-2 px-3 bg-red-500 text-white rounded-lg text-xs font-bold tracking-wide border border-red-600 shadow-[0_3px_0_0_#b91c1c] transition-all duration-100 hover:translate-y-[3px] hover:bg-red-600 hover:shadow-[0_0_0_0_#b91c1c] active:translate-y-[3px] active:shadow-[0_0_0_0_#b91c1c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2"
                 >
-                  <FontAwesomeIcon icon={faRightFromBracket} className="w-3.5 h-3.5 shrink-0 text-red-500" />
+                  <FontAwesomeIcon icon={faRightFromBracket} className="w-3.5 h-3.5 shrink-0" />
                   <span>Keluar / Logout</span>
                 </button>
               </div>
