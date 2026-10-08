@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, permanentRedirect } from 'next/navigation';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
-import KaryaShell from '../components/karya-shell';
 import KaryaAksi from '../components/karya-aksi';
 import GambarKarya from '../components/gambar-karya';
 import IsiKarya from '../components/isi-karya';
@@ -13,14 +12,22 @@ import {
   dekode,
   formatTanggal,
   getKaryaBySegmen,
+  getKaryaList,
   getKaryaTerkait,
   hrefKarya,
   ringkas,
+  segmenKarya,
 } from '../data';
 
 export const revalidate = 300;
 
 type Props = { params: Promise<{ slug: string }> };
+
+// Bangun semua halaman karya lebih dulu agar klik terasa instan
+export async function generateStaticParams() {
+  const { items } = await getKaryaList();
+  return items.map((k) => ({ slug: segmenKarya(k) }));
+}
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
@@ -108,10 +115,10 @@ export default async function DetailKaryaPage({ params }: Props) {
   ];
 
   return (
-    <KaryaShell>
+    <>
       <JsonLd data={jsonLd} />
 
-      <div className="mx-auto w-full max-w-3xl px-4 sm:px-6 py-8 sm:py-12">
+      <div className="mx-auto w-full max-w-3xl px-4 pb-8 pt-24 sm:px-6 sm:pb-12 sm:pt-28">
         <nav aria-label="Breadcrumb" className="mb-6 text-xs sm:text-sm text-slate-500">
           <ol className="flex flex-wrap items-center gap-1.5">
             <li>
@@ -173,7 +180,7 @@ export default async function DetailKaryaPage({ params }: Props) {
                   </div>
                 </div>
 
-                <KaryaAksi id={karya.id} judul={karya.judul} path={hrefKarya(karya)} />
+                <KaryaAksi judul={karya.judul} path={hrefKarya(karya)} />
               </div>
             </header>
 
@@ -219,6 +226,6 @@ export default async function DetailKaryaPage({ params }: Props) {
           </section>
         )}
       </div>
-    </KaryaShell>
+    </>
   );
 }

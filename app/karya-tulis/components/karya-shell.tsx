@@ -1,31 +1,24 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { Search, ClipboardSignature, FileText, LogIn, Menu, X, ArrowUp } from 'lucide-react';
-// Sesuaikan path jika letak modal berbeda
-import VisitorModal from '../../components/visitor-modal';
+import { Search, PenLine, FileText, Menu, X, ArrowUp } from 'lucide-react';
 
 const HEADER_HEIGHT = 64;
 const SCROLL_TOP_THRESHOLD = 400;
+// Sesuaikan dengan alamat halaman/form pengiriman karya Anda
+const KIRIM_KARYA_HREF = '/kirim-karya';
 
 interface NavItem {
   label: string;
-  href?: string;
+  href: string;
   icon: React.ComponentType<{ className?: string }>;
-  onClick?: () => void;
-  active?: boolean;
+  active: boolean;
 }
 
-const Header = memo(function Header({
-  onOpenVisitor,
-  isVisitorOpen,
-}: {
-  onOpenVisitor: () => void;
-  isVisitorOpen: boolean;
-}) {
+const Header = memo(function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const pathname = usePathname();
@@ -37,20 +30,25 @@ const Header = memo(function Header({
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Header berlatar putih hanya saat di-scroll atau menu seluler terbuka
+  const isSolid = isScrolled || isMobileMenuOpen;
+  // Di halaman daftar, header berada di atas hero biru sehingga teksnya putih
+  const onDark = pathname === '/karya-tulis' && !isSolid;
+  const ring = onDark ? 'focus-visible:ring-white' : 'focus-visible:ring-blue-500';
+
   const menuItems: NavItem[] = [
-    { label: 'Pencarian Buku', href: '/', icon: Search, active: pathname === '/' && !isVisitorOpen },
-    { label: 'Catat Kunjungan', icon: ClipboardSignature, onClick: onOpenVisitor, active: isVisitorOpen },
+    { label: 'Pencarian Buku', href: '/', icon: Search, active: pathname === '/' },
     {
       label: 'Karya Tulis',
       href: '/karya-tulis',
       icon: FileText,
-      active: !isVisitorOpen && !!pathname?.startsWith('/karya-tulis'),
+      active: !!pathname?.startsWith('/karya-tulis'),
     },
     {
-      label: 'Masuk Pustakawan',
-      href: '/dashboard',
-      icon: LogIn,
-      active: !!pathname?.startsWith('/dashboard'),
+      label: 'Kirim Karya',
+      href: KIRIM_KARYA_HREF,
+      icon: PenLine,
+      active: !!pathname?.startsWith(KIRIM_KARYA_HREF),
     },
   ];
 
@@ -59,17 +57,30 @@ const Header = memo(function Header({
     const isActive = item.active;
 
     const baseStyle = isMobile
-      ? 'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors w-full text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500'
-      : 'group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 cursor-pointer';
+      ? `group flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 ${ring}`
+      : `group relative flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 ${ring}`;
 
-    const activeStyle = isActive
-      ? 'text-blue-700 font-semibold bg-blue-50'
+    const tone = onDark
+      ? isActive
+        ? 'bg-white/15 font-semibold text-white'
+        : 'text-white/90 hover:bg-white/15 hover:text-white'
+      : isActive
+      ? 'bg-blue-50 font-semibold text-blue-700'
       : isMobile
-      ? 'text-slate-600 hover:text-blue-700 hover:bg-blue-50'
-      : 'text-slate-700 hover:text-blue-700 hover:bg-blue-50';
+      ? 'text-slate-600 hover:bg-blue-50 hover:text-blue-700'
+      : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700';
 
-    const content = (
-      <>
+    return (
+      <Link
+        key={item.label}
+        href={item.href}
+        title={item.label}
+        aria-current={isActive ? 'page' : undefined}
+        onClick={() => {
+          if (isMobile) setIsMobileMenuOpen(false);
+        }}
+        className={`${baseStyle} ${tone}`}
+      >
         <Icon
           className={`h-4 w-4 transition-transform ${!isMobile ? 'group-hover:scale-110' : ''} ${
             isMobile ? (isActive ? 'text-blue-600' : 'text-slate-500 group-hover:text-blue-600') : 'text-current'
@@ -79,50 +90,14 @@ const Header = memo(function Header({
         {isActive && !isMobile && (
           <span className="absolute inset-x-3 bottom-0.5 h-0.5 rounded-full bg-current" />
         )}
-      </>
-    );
-
-    if (item.onClick) {
-      return (
-        <button
-          key={item.label}
-          type="button"
-          title={item.label}
-          onClick={() => {
-            item.onClick?.();
-            if (isMobile) setIsMobileMenuOpen(false);
-          }}
-          className={`${baseStyle} ${activeStyle}`}
-          aria-haspopup="dialog"
-          aria-expanded={!!isActive}
-        >
-          {content}
-        </button>
-      );
-    }
-
-    return (
-      <Link
-        key={item.label}
-        href={item.href || '#'}
-        title={item.label}
-        aria-current={isActive ? 'page' : undefined}
-        onClick={() => {
-          if (isMobile) setIsMobileMenuOpen(false);
-        }}
-        className={`${baseStyle} ${activeStyle}`}
-      >
-        {content}
       </Link>
     );
   };
 
-  const isSolid = isScrolled || isMobileMenuOpen;
-
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-30 border-b bg-white transition-shadow duration-200 ${
-        isSolid ? 'border-blue-100 shadow-sm' : 'border-blue-50'
+      className={`fixed inset-x-0 top-0 z-30 border-b transition-[background-color,border-color,box-shadow] duration-200 ${
+        isSolid ? 'border-blue-100 bg-white shadow-sm' : 'border-transparent bg-transparent'
       }`}
     >
       <div
@@ -131,7 +106,7 @@ const Header = memo(function Header({
       >
         <Link
           href="/"
-          className="group flex shrink-0 items-center gap-2.5 rounded-lg transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className={`group flex shrink-0 items-center gap-2.5 rounded-lg transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 ${ring}`}
         >
           <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg transition-transform group-hover:scale-105">
             <Image
@@ -143,7 +118,11 @@ const Header = memo(function Header({
               priority
             />
           </div>
-          <span className="whitespace-nowrap text-sm font-bold tracking-tight text-slate-900 sm:text-base lg:text-lg">
+          <span
+            className={`whitespace-nowrap text-sm font-bold tracking-tight transition-colors sm:text-base lg:text-lg ${
+              onDark ? 'text-white' : 'text-slate-900'
+            }`}
+          >
             Perpustakaan Lubangsa
           </span>
         </Link>
@@ -157,7 +136,9 @@ const Header = memo(function Header({
           onClick={() => setIsMobileMenuOpen((prev) => !prev)}
           aria-label={isMobileMenuOpen ? 'Tutup menu' : 'Buka menu'}
           aria-expanded={isMobileMenuOpen}
-          className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg p-2 text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:hidden"
+          className={`inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg p-2 transition-colors focus:outline-none focus-visible:ring-2 md:hidden ${ring} ${
+            onDark ? 'text-white hover:bg-white/15' : 'text-slate-700 hover:bg-blue-50 hover:text-blue-700'
+          }`}
         >
           {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
@@ -202,10 +183,6 @@ const ScrollToTopButton = memo(function ScrollToTopButton() {
 });
 
 export default function KaryaShell({ children }: { children: React.ReactNode }) {
-  const [isVisitorOpen, setIsVisitorOpen] = useState(false);
-  const openVisitor = useCallback(() => setIsVisitorOpen(true), []);
-  const closeVisitor = useCallback(() => setIsVisitorOpen(false), []);
-
   return (
     <div className="flex min-h-screen w-full flex-col bg-gradient-to-b from-blue-50 via-slate-50 to-white text-slate-900 antialiased">
       <a
@@ -215,14 +192,12 @@ export default function KaryaShell({ children }: { children: React.ReactNode }) 
         Lewati ke konten
       </a>
 
-      <Header onOpenVisitor={openVisitor} isVisitorOpen={isVisitorOpen} />
-      <div aria-hidden="true" style={{ height: HEADER_HEIGHT }} />
+      <Header />
 
       <main id="konten" className="flex-1">
         {children}
       </main>
 
-      <VisitorModal isOpen={isVisitorOpen} onClose={closeVisitor} />
       <ScrollToTopButton />
     </div>
   );

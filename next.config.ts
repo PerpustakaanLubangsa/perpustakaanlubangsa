@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Paket ini dijalankan langsung oleh Node.js dan tidak digabung (bundle) oleh Next.js.
+  // Dibutuhkan agar pembuatan PDF dan pengolahan gambar berjalan normal.
+  serverExternalPackages: ["@react-pdf/renderer", "sharp"],
+
   async headers() {
     return [
       {

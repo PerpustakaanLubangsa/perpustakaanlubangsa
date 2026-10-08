@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { Feather } from 'lucide-react';
-import KaryaShell from './components/karya-shell';
 import KaryaList from './components/karya-list';
 import JsonLd from './components/json-ld';
 import { SITE_NAME, SITE_URL, getKaryaList, hrefKarya, keRingkas } from './data';
@@ -33,7 +32,7 @@ export const metadata: Metadata = {
 
 export default async function KaryaTulisPage() {
   const { items, gagal } = await getKaryaList();
-  const ringkas = items.map(keRingkas);
+  const daftar = items.map(keRingkas);
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -56,24 +55,24 @@ export default async function KaryaTulisPage() {
   };
 
   return (
-    <KaryaShell>
+    <>
       <JsonLd data={jsonLd} />
 
       <section className="w-full bg-gradient-to-b from-blue-600 to-blue-700 text-white">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6 pt-10 pb-16 text-center">
+        <div className="mx-auto max-w-5xl px-4 pb-16 pt-24 text-center sm:px-6 sm:pt-28">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25">
             <Feather className="h-6 w-6" strokeWidth={1.8} aria-hidden="true" />
           </div>
-          <h1 className="text-2xl sm:text-4xl font-bold tracking-tight [text-wrap:balance]">
+          <h1 className="text-2xl font-bold tracking-tight [text-wrap:balance] sm:text-4xl">
             Galeri Karya Tulis
           </h1>
-          <p className="mt-2 text-sm sm:text-base text-blue-100 [text-wrap:balance]">
+          <p className="mt-2 text-sm text-blue-100 [text-wrap:balance] sm:text-base">
             Inspirasi dan gagasan dari anggota perpustakaan
           </p>
         </div>
       </section>
 
-      <KaryaList karya={ringkas} gagal={gagal} />
-    </KaryaShell>
+      <KaryaList karya={daftar} gagal={gagal} />
+    </>
   );
 }

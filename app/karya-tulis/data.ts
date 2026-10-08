@@ -121,3 +121,25 @@ export const getKaryaTerkait = cache(async (kategori: string, kecualiId: string)
     return [] as KaryaTulisItem[];
   }
 });
+
+export interface AnggotaIdentitas {
+  nama: string;
+  jenjang: string;
+  organisasi: string | null;
+  kamar: string | null;
+}
+
+export const getAnggotaIdentitas = cache(async (id: string) => {
+  try {
+    const { data, error } = await supabase
+      .from('anggota')
+      .select('nama, jenjang, organisasi, kamar')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as AnggotaIdentitas | null) ?? null;
+  } catch {
+    // Gagal atau tidak diizinkan (RLS): PDF tetap dibuat tanpa identitas tambahan
+    return null;
+  }
+});

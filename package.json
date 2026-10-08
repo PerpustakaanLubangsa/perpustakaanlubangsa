@@ -12,6 +12,7 @@
     "@fortawesome/fontawesome-svg-core": "^7.3.0",
     "@fortawesome/free-solid-svg-icons": "^7.3.0",
     "@fortawesome/react-fontawesome": "^3.4.0",
+    "@react-pdf/renderer": "^4.9.0",
     "@supabase/supabase-js": "^2.110.2",
     "chart.js": "^4.5.1",
     "exceljs": "^4.4.0",
@@ -20,6 +21,7 @@
     "react": "19.2.4",
     "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.4",
+    "sharp": "^0.35.5",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
