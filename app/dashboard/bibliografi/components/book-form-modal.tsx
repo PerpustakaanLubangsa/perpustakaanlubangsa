@@ -3,6 +3,15 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { X, Loader2, Image as ImageIcon, Plus, Edit2, Trash2, Library } from 'lucide-react';
 import EksemplarFormModal from './EksemplarFormModal';
+import KategoriSelect from './KategoriSelect';
+import {
+  BTN_DELETE,
+  BTN_EDIT,
+  BTN_NEUTRAL,
+  BTN_PRIMARY,
+  BTN_PRIMARY_SM,
+  BTN_TAG_REMOVE,
+} from './raised-buttons';
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -70,7 +79,8 @@ type TextFieldName =
   | 'deskripsi_fisik'
   | 'sampul_url';
 
-// Field berbentuk data, bukan JSX yang diulang 8 kali
+// Field berbentuk data, bukan JSX yang diulang 8 kali.
+// Field "kategori" dirender sebagai dropdown (KategoriSelect), bukan input teks.
 const FIELDS: {
   name: TextFieldName;
   label: string;
@@ -80,7 +90,7 @@ const FIELDS: {
 }[] = [
   { name: 'judul', label: 'Judul Buku *', placeholder: 'Masukkan judul lengkap buku', required: true },
   { name: 'penulis', label: 'Penulis / Pengarang', placeholder: 'Nama penulis' },
-  { name: 'kategori', label: 'Kategori Buku', placeholder: 'Contoh: Fiksi, Komputer, Sejarah' },
+  { name: 'kategori', label: 'Kategori Buku', placeholder: 'Pilih kategori buku' },
   { name: 'isbn_issn', label: 'ISBN / ISSN', placeholder: '978-xxx-xxx-x' },
   { name: 'penerbit', label: 'Penerbit', placeholder: 'Nama perusahaan penerbit' },
   { name: 'tahun_terbit', label: 'Tahun Terbit', placeholder: 'Contoh: 2024' },
@@ -141,12 +151,12 @@ const EksemplarItem = memo(function EksemplarItem({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1 shrink-0">
+      <div className="flex flex-col gap-2 shrink-0 pb-0.5">
         <button
           type="button"
           onClick={() => onEdit(item)}
           aria-label={`Edit eksemplar ${item.kode}`}
-          className="p-1.5 text-blue-500 hover:text-white hover:bg-blue-600 rounded-md border border-blue-100 hover:border-blue-600 transition-colors cursor-pointer"
+          className={`p-1.5 rounded-md ${BTN_EDIT}`}
         >
           <Edit2 className="h-3 w-3" />
         </button>
@@ -154,7 +164,7 @@ const EksemplarItem = memo(function EksemplarItem({
           type="button"
           onClick={() => onDelete(item.id)}
           aria-label={`Hapus eksemplar ${item.kode}`}
-          className="p-1.5 text-red-500 hover:text-white hover:bg-red-500 rounded-md border border-red-100 hover:border-red-500 transition-colors cursor-pointer"
+          className={`p-1.5 rounded-md ${BTN_DELETE}`}
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -241,6 +251,11 @@ export default function BookFormModal({
     setFormData((prev) => ({ ...prev, [name]: value }));
   }, []);
 
+  // Nilai kategori disimpan sebagai nama kategori (teks), sama seperti sebelumnya
+  const handleKategoriChange = useCallback((value: string) => {
+    setFormData((prev) => ({ ...prev, kategori: value }));
+  }, []);
+
   const handleKeyDownTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
@@ -268,7 +283,7 @@ export default function BookFormModal({
     const { created_at, updated_at, ...cleanFormData } = formData;
 
     try {
-      await onSubmit({ ...cleanFormData, topik: tags });
+      await onSubmit({ ...cleanFormData, kategori: cleanFormData.kategori ?? '', topik: tags });
       onClose();
     } catch (error) {
       console.error('Error saat menyimpan form:', error);
@@ -323,7 +338,7 @@ export default function BookFormModal({
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className="p-1.5 text-blue-500 hover:text-white rounded-lg hover:bg-blue-600 transition-colors cursor-pointer"
+            className={`p-1.5 rounded-lg ${BTN_EDIT}`}
           >
             <X className="h-4 w-4" />
           </button>
@@ -367,7 +382,7 @@ export default function BookFormModal({
                   <button
                     type="button"
                     onClick={handleOpenAddEksemplar}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                    className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 mb-0.5 rounded-lg ${BTN_PRIMARY_SM}`}
                   >
                     <Plus className="h-3 w-3 stroke-[3]" />
                     Tambah
@@ -401,23 +416,37 @@ export default function BookFormModal({
           {/* Sisi kanan: form utama */}
           <form onSubmit={handleSubmit} className="col-span-2 flex flex-col min-h-0 bg-white">
             <div className={`flex-1 min-h-0 overflow-y-auto p-6 space-y-4 ${SCROLL_CLS}`}>
-              {FIELDS.map((field) => (
-                <div key={field.name} className="flex flex-col gap-1.5">
-                  <label htmlFor={`field-${field.name}`} className={LABEL_CLS}>
-                    {field.label}
-                  </label>
-                  <input
-                    id={`field-${field.name}`}
-                    type={field.type ?? 'text'}
-                    name={field.name}
-                    required={field.required}
-                    value={formData[field.name]}
-                    onChange={handleChange}
-                    placeholder={field.placeholder}
-                    className={INPUT_CLS}
-                  />
-                </div>
-              ))}
+              {FIELDS.map((field) => {
+                const inputId = `field-${field.name}`;
+
+                return (
+                  <div key={field.name} className="flex flex-col gap-1.5">
+                    <label htmlFor={inputId} className={LABEL_CLS}>
+                      {field.label}
+                    </label>
+
+                    {field.name === 'kategori' ? (
+                      <KategoriSelect
+                        id={inputId}
+                        value={formData.kategori ?? ''}
+                        onChange={handleKategoriChange}
+                        disabled={isSubmitting}
+                      />
+                    ) : (
+                      <input
+                        id={inputId}
+                        type={field.type ?? 'text'}
+                        name={field.name}
+                        required={field.required}
+                        value={formData[field.name] ?? ''}
+                        onChange={handleChange}
+                        placeholder={field.placeholder}
+                        className={INPUT_CLS}
+                      />
+                    )}
+                  </div>
+                );
+              })}
 
               {/* Topik */}
               <div className="flex flex-col gap-1.5">
@@ -435,7 +464,7 @@ export default function BookFormModal({
                         type="button"
                         onClick={() => removeTag(index)}
                         aria-label={`Hapus topik ${tag}`}
-                        className="text-blue-400 hover:text-blue-700 rounded-md transition-colors cursor-pointer"
+                        className={`p-0.5 rounded ${BTN_TAG_REMOVE}`}
                       >
                         <X className="h-3 w-3" />
                       </button>
@@ -477,14 +506,14 @@ export default function BookFormModal({
                 type="button"
                 onClick={onClose}
                 disabled={isSubmitting}
-                className="h-10 px-4 text-xs font-bold text-slate-600 bg-white border border-blue-100 rounded-xl hover:border-blue-300 hover:text-blue-700 transition-colors disabled:opacity-50 cursor-pointer"
+                className={`h-10 px-4 text-xs font-bold rounded-xl ${BTN_NEUTRAL}`}
               >
                 Batal
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="h-10 px-5 text-xs font-extrabold uppercase tracking-wider text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-70 cursor-pointer active:scale-95"
+                className={`h-10 px-5 text-xs font-extrabold uppercase tracking-wider rounded-xl flex items-center gap-2 ${BTN_PRIMARY}`}
               >
                 {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 {bookToEdit ? 'Simpan Perubahan' : 'Tambah Buku'}

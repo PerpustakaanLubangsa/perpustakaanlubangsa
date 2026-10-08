@@ -2,6 +2,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
+import RakSelect from './RakSelect';
+import { BTN_EDIT, BTN_NEUTRAL, BTN_PRIMARY } from './raised-buttons';
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -35,6 +37,7 @@ const initialFormState: Eksemplar = {
 
 type FieldName = 'kode' | 'nomor_panggil' | 'lokasi_rak';
 
+// Field "lokasi_rak" dirender sebagai dropdown (RakSelect), bukan input teks.
 const FIELDS: {
   name: FieldName;
   label: string;
@@ -44,7 +47,7 @@ const FIELDS: {
 }[] = [
   { name: 'kode', label: 'Kode Eksemplar / Barcode *', placeholder: 'BKS-00001', required: true, mono: true },
   { name: 'nomor_panggil', label: 'Nomor Panggil (Call Number)', placeholder: 'Contoh: 813 UMA s' },
-  { name: 'lokasi_rak', label: 'Lokasi Rak', placeholder: 'Contoh: Rak A-1, Lantai 2' },
+  { name: 'lokasi_rak', label: 'Lokasi Rak', placeholder: 'Pilih rak' },
 ];
 
 const INPUT_CLS =
@@ -69,6 +72,15 @@ export default function EksemplarFormModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const firstInputRef = useRef<HTMLInputElement>(null);
 
+  // Status daftar rak (terbuka / tidak), dibaca oleh handler Esc dan klik backdrop
+  const isRakOpenRef = useRef(false);
+  const lastRakCloseRef = useRef(0);
+
+  const handleRakOpenChange = useCallback((open: boolean) => {
+    isRakOpenRef.current = open;
+    if (!open) lastRakCloseRef.current = Date.now();
+  }, []);
+
   /* Kunci scroll body.
      Modal induk (BookFormModal) sudah mengunci scroll, jadi nilai asli disimpan
      dan dipulihkan persis, bukan dipaksa ke '' yang bisa membuka kunci induk. */
@@ -92,14 +104,15 @@ export default function EksemplarFormModal({
     if (isOpen) firstInputRef.current?.focus();
   }, [isOpen]);
 
-  /* Esc menutup modal ini saja (tidak ikut menutup modal induk) */
+  /* Esc menutup modal ini saja (tidak ikut menutup modal induk).
+     Kalau daftar rak sedang terbuka, Esc hanya menutup daftar itu. */
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isSubmitting) {
-        e.stopPropagation();
-        onClose();
-      }
+      if (e.key !== 'Escape' || isSubmitting) return;
+      if (isRakOpenRef.current) return;
+      e.stopPropagation();
+      onClose();
     };
     // Fase capture agar berjalan lebih dulu daripada listener Esc milik modal induk
     window.addEventListener('keydown', onKey, true);
@@ -110,6 +123,18 @@ export default function EksemplarFormModal({
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   }, []);
+
+  // Nilai rak disimpan sebagai nama rak (teks), mis. "A 01"
+  const handleRakChange = useCallback((value: string) => {
+    setFormData((prev) => ({ ...prev, lokasi_rak: value }));
+  }, []);
+
+  /* Klik backdrop menutup modal, kecuali klik itu baru saja dipakai untuk menutup daftar rak */
+  const handleBackdropClick = useCallback(() => {
+    if (isSubmitting) return;
+    if (isRakOpenRef.current || Date.now() - lastRakCloseRef.current < 300) return;
+    onClose();
+  }, [isSubmitting, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,11 +158,7 @@ export default function EksemplarFormModal({
       <style>{MODAL_CSS}</style>
 
       {/* Backdrop: satu lapis warna, tanpa blur */}
-      <div
-        className="absolute inset-0 bg-slate-900/50"
-        onClick={isSubmitting ? undefined : onClose}
-        aria-hidden="true"
-      />
+      <div className="absolute inset-0 bg-slate-900/50" onClick={handleBackdropClick} aria-hidden="true" />
 
       {/* Kontainer utama */}
       <div
@@ -155,7 +176,7 @@ export default function EksemplarFormModal({
             type="button"
             onClick={onClose}
             aria-label="Tutup"
-            className="p-1.5 text-blue-500 hover:text-white rounded-lg hover:bg-blue-600 transition-colors cursor-pointer"
+            className={`p-1.5 rounded-lg ${BTN_EDIT}`}
           >
             <X className="h-4 w-4" />
           </button>
@@ -163,24 +184,40 @@ export default function EksemplarFormModal({
 
         <form onSubmit={handleSubmit} className="flex flex-col">
           <div className="p-5 space-y-4">
-            {FIELDS.map((field, i) => (
-              <div key={field.name} className="flex flex-col gap-1.5">
-                <label htmlFor={`eks-${field.name}`} className="text-xs font-bold text-slate-700">
-                  {field.label}
-                </label>
-                <input
-                  id={`eks-${field.name}`}
-                  ref={i === 0 ? firstInputRef : undefined}
-                  type="text"
-                  name={field.name}
-                  required={field.required}
-                  value={formData[field.name]}
-                  onChange={handleChange}
-                  placeholder={field.placeholder}
-                  className={`${INPUT_CLS} ${field.mono ? 'font-mono' : ''}`}
-                />
-              </div>
-            ))}
+            {FIELDS.map((field, i) => {
+              const inputId = `eks-${field.name}`;
+
+              return (
+                <div key={field.name} className="flex flex-col gap-1.5">
+                  <label htmlFor={inputId} className="text-xs font-bold text-slate-700">
+                    {field.label}
+                  </label>
+
+                  {field.name === 'lokasi_rak' ? (
+                    <RakSelect
+                      id={inputId}
+                      value={formData.lokasi_rak ?? ''}
+                      onChange={handleRakChange}
+                      onOpenChange={handleRakOpenChange}
+                      placeholder={field.placeholder}
+                      disabled={isSubmitting}
+                    />
+                  ) : (
+                    <input
+                      id={inputId}
+                      ref={i === 0 ? firstInputRef : undefined}
+                      type="text"
+                      name={field.name}
+                      required={field.required}
+                      value={formData[field.name] ?? ''}
+                      onChange={handleChange}
+                      placeholder={field.placeholder}
+                      className={`${INPUT_CLS} ${field.mono ? 'font-mono' : ''}`}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Footer */}
@@ -189,14 +226,14 @@ export default function EksemplarFormModal({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="h-9 px-4 text-xs font-bold text-slate-600 bg-white border border-blue-100 rounded-xl hover:border-blue-300 hover:text-blue-700 transition-colors disabled:opacity-50 cursor-pointer"
+              className={`h-10 px-4 text-xs font-bold rounded-xl ${BTN_NEUTRAL}`}
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="h-9 px-4 text-xs font-extrabold uppercase tracking-wider text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-70 cursor-pointer active:scale-95"
+              className={`h-10 px-5 text-xs font-extrabold uppercase tracking-wider rounded-xl flex items-center gap-2 ${BTN_PRIMARY}`}
             >
               {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               {eksemplarToEdit ? 'Simpan' : 'Tambah'}

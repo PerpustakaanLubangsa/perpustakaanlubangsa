@@ -2,18 +2,10 @@
 
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import {
-  Search,
-  Loader2,
-  Library,
-  Plus,
-  Edit3,
-  Trash2,
-  ArrowUp,
-  GripVertical,
-} from 'lucide-react';
+import { Search, Loader2, Library, Plus, Edit3, Trash2, ArrowUp } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Rak, RakFormData } from './components/rak-form-modal';
+import { BTN_DELETE, BTN_EDIT, BTN_PRIMARY } from '@/app/dashboard/bibliografi/components/raised-buttons'; // ← sesuaikan path
 
 // Modal dimuat hanya saat dibutuhkan, bundle awal lebih kecil
 const RakFormModal = dynamic(() => import('./components/rak-form-modal'), {
@@ -22,9 +14,10 @@ const RakFormModal = dynamic(() => import('./components/rak-form-modal'), {
 
 /* ───────────────────────── Konstanta ───────────────────────── */
 
-const TABLE = 'rak';
+const TABLE = 'data_rak';
 const ITEMS_PER_PAGE = 40;
-const RAK_COLUMNS = 'id, nama_rak, kode_klasifikasi, created_at, nomor_urut';
+const RAK_COLUMNS =
+  'id, nama_rak, kategori_id, kode_awal, huruf_awal, kode_akhir, huruf_akhir, created_at, kategori:kategori_id ( nama_kategori )';
 const SHOW_SCROLL_TOP_AFTER = 400; // px
 
 const PAGE_CSS = `
@@ -39,9 +32,6 @@ const dateFormatter = new Intl.DateTimeFormat('id-ID', {
   year: 'numeric',
 });
 
-type RakId = Rak['id'];
-type DropEdge = 'top' | 'bottom';
-
 /* ───────────────────────── Helper ───────────────────────── */
 
 // Buang karakter yang merusak sintaks filter .or() PostgREST
@@ -54,98 +44,76 @@ function formatDate(value: string | null): string {
   return Number.isNaN(d.getTime()) ? '-' : dateFormatter.format(d);
 }
 
+const kategoriNama = (rak: Rak): string => {
+  const k = Array.isArray(rak.kategori) ? rak.kategori[0] : rak.kategori;
+  return k?.nama_kategori ?? '';
+};
+
+const gabung = (kode: string | null, huruf: string | null) =>
+  [kode, huruf].filter(Boolean).join(' ');
+
+// Contoh hasil: "001 – 005.1092", "813 A – 813 F", "813 A"
+function formatKlasifikasi(rak: Rak): string {
+  const awal = gabung(rak.kode_awal, rak.huruf_awal);
+  const akhir = gabung(rak.kode_akhir, rak.huruf_akhir);
+  if (!awal && !akhir) return '';
+  if (!akhir || awal === akhir) return awal;
+  if (!awal) return akhir;
+  return `${awal} – ${akhir}`;
+}
+
 /* ───────────────────────── Komponen kecil ───────────────────────── */
 
 interface RakRowProps {
   rak: Rak;
-  canDrag: boolean;
-  isDragging: boolean;
-  dropEdge: DropEdge | null;
   onEdit: (rak: Rak) => void;
   onDelete: (rak: Rak) => void;
-  onDragStart: (e: React.DragEvent<HTMLDivElement>, rak: Rak) => void;
-  onDragOver: (e: React.DragEvent<HTMLDivElement>, rak: Rak) => void;
-  onDrop: (e: React.DragEvent<HTMLDivElement>, rak: Rak) => void;
-  onDragEnd: () => void;
-  onMoveStep: (rak: Rak, direction: -1 | 1) => void;
 }
 
-const RakRow = memo(function RakRow({
-  rak,
-  canDrag,
-  isDragging,
-  dropEdge,
-  onEdit,
-  onDelete,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
-  onMoveStep,
-}: RakRowProps) {
-  const edgeClass =
-    dropEdge === 'top'
-      ? 'shadow-[inset_0_2px_0_0_#2563eb]'
-      : dropEdge === 'bottom'
-        ? 'shadow-[inset_0_-2px_0_0_#2563eb]'
-        : '';
+const RakRow = memo(function RakRow({ rak, onEdit, onDelete }: RakRowProps) {
+  const kategori = kategoriNama(rak);
+  const klasifikasi = formatKlasifikasi(rak);
 
   return (
     <div
       tabIndex={0}
       role="button"
       aria-label={`Edit ${rak.nama_rak}`}
-      draggable={canDrag}
-      onDragStart={canDrag ? (e) => onDragStart(e, rak) : undefined}
-      onDragOver={canDrag ? (e) => onDragOver(e, rak) : undefined}
-      onDrop={canDrag ? (e) => onDrop(e, rak) : undefined}
-      onDragEnd={canDrag ? onDragEnd : undefined}
       onClick={() => onEdit(rak)}
       onKeyDown={(e) => {
         // Hanya saat baris sendiri yang fokus, bukan tombol di dalamnya
         if (e.target !== e.currentTarget) return;
-
-        // Alt + panah atas/bawah: geser urutan lewat keyboard
-        if (canDrag && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-          e.preventDefault();
-          onMoveStep(rak, e.key === 'ArrowUp' ? -1 : 1);
-          return;
-        }
-
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onEdit(rak);
         }
       }}
       // content-visibility: baris di luar layar tidak dirender, scroll lebih ringan
-      className={`group grid grid-cols-12 gap-3 items-center px-3 py-1 min-h-8 cursor-pointer hover:bg-blue-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 [content-visibility:auto] [contain-intrinsic-size:auto_32px] ${edgeClass} ${
-        isDragging ? 'opacity-40' : ''
-      }`}
+      className="group grid grid-cols-12 gap-3 items-center px-3 py-1.5 min-h-9 cursor-pointer hover:bg-blue-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 [content-visibility:auto] [contain-intrinsic-size:auto_36px]"
     >
-      <div className="col-span-1 flex items-center gap-0.5">
-        <GripVertical
-          aria-hidden="true"
-          className={`h-3.5 w-3.5 shrink-0 transition-colors ${
-            canDrag
-              ? 'text-slate-300 group-hover:text-blue-500 cursor-grab active:cursor-grabbing'
-              : 'text-slate-200'
-          }`}
-        />
-        <span className="inline-flex min-w-6 h-5 px-1 items-center justify-center rounded bg-blue-600 text-white text-[10px] font-bold tabular-nums leading-none">
-          {rak.nomor_urut ?? '-'}
-        </span>
-      </div>
-
-      <div className="col-span-5 min-w-0">
-        <span className="block text-xs font-semibold text-slate-800 truncate group-hover:text-blue-700 transition-colors">
+      <div className="col-span-2 min-w-0">
+        <span className="block text-xs font-bold text-slate-800 truncate group-hover:text-blue-700 transition-colors">
           {rak.nama_rak}
         </span>
       </div>
 
       <div className="col-span-3 min-w-0">
-        {rak.kode_klasifikasi ? (
-          <span className="inline-block max-w-full px-1.5 text-[10px] leading-4 font-bold bg-blue-50 text-blue-700 border border-blue-100 rounded truncate tabular-nums align-middle">
-            {rak.kode_klasifikasi}
+        {kategori ? (
+          <span className="block text-xs font-medium text-slate-600 truncate" title={kategori}>
+            {kategori}
+          </span>
+        ) : (
+          <span className="text-[11px] text-slate-400">-</span>
+        )}
+      </div>
+
+      <div className="col-span-4 min-w-0">
+        {klasifikasi ? (
+          <span
+            title={klasifikasi}
+            className="inline-block max-w-full px-1.5 text-[10px] leading-4 font-bold bg-blue-50 text-blue-700 border border-blue-100 rounded truncate tabular-nums align-middle"
+          >
+            {klasifikasi}
           </span>
         ) : (
           <span className="text-[11px] text-slate-400">-</span>
@@ -156,7 +124,7 @@ const RakRow = memo(function RakRow({
         {formatDate(rak.created_at)}
       </div>
 
-      <div className="col-span-1 flex justify-end gap-1">
+      <div className="col-span-1 flex justify-end gap-1.5">
         <button
           type="button"
           onClick={(e) => {
@@ -165,7 +133,7 @@ const RakRow = memo(function RakRow({
           }}
           title="Edit Rak"
           aria-label={`Edit ${rak.nama_rak}`}
-          className="p-1 text-blue-600 rounded hover:bg-blue-600 hover:text-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          className={`p-1.5 rounded-md ${BTN_EDIT}`}
         >
           <Edit3 className="h-3.5 w-3.5" />
         </button>
@@ -177,7 +145,7 @@ const RakRow = memo(function RakRow({
           }}
           title="Hapus Rak"
           aria-label={`Hapus ${rak.nama_rak}`}
-          className="p-1 text-red-500 rounded hover:bg-red-500 hover:text-white transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          className={`p-1.5 rounded-md ${BTN_DELETE}`}
         >
           <Trash2 className="h-3.5 w-3.5" />
         </button>
@@ -188,22 +156,22 @@ const RakRow = memo(function RakRow({
 
 function SkeletonRow() {
   return (
-    <div className="grid grid-cols-12 gap-3 items-center px-3 py-1 min-h-8 animate-pulse">
-      <div className="col-span-1">
-        <div className="w-7 h-5 rounded bg-blue-100" />
-      </div>
-      <div className="col-span-5">
-        <div className="h-3 w-2/3 rounded bg-blue-100" />
+    <div className="grid grid-cols-12 gap-3 items-center px-3 py-1.5 min-h-9 animate-pulse">
+      <div className="col-span-2">
+        <div className="h-3 w-12 rounded bg-blue-100" />
       </div>
       <div className="col-span-3">
-        <div className="h-4 w-14 rounded bg-blue-50" />
+        <div className="h-3 w-2/3 rounded bg-blue-100" />
+      </div>
+      <div className="col-span-4">
+        <div className="h-4 w-24 rounded bg-blue-50" />
       </div>
       <div className="col-span-2">
         <div className="h-3 w-16 rounded bg-blue-50" />
       </div>
-      <div className="col-span-1 flex justify-end gap-1">
-        <div className="w-5 h-5 rounded bg-blue-50" />
-        <div className="w-5 h-5 rounded bg-blue-50" />
+      <div className="col-span-1 flex justify-end gap-1.5">
+        <div className="w-6 h-6 rounded-md bg-blue-50" />
+        <div className="w-6 h-6 rounded-md bg-blue-50" />
       </div>
     </div>
   );
@@ -235,15 +203,14 @@ const ScrollTopButton = memo(function ScrollTopButton() {
     window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
   };
 
+  if (!visible) return null;
+
   return (
     <button
       type="button"
       onClick={handleClick}
       aria-label="Kembali ke atas"
-      tabIndex={visible ? 0 : -1}
-      className={`fixed bottom-6 right-6 z-40 w-10 h-10 flex items-center justify-center rounded-full bg-blue-600 hover:bg-blue-700 text-white border border-blue-700 transition-[opacity,transform,background-color] duration-200 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 ${
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3 pointer-events-none'
-      }`}
+      className={`fixed bottom-6 right-6 z-40 w-10 h-10 flex items-center justify-center rounded-full ${BTN_PRIMARY}`}
     >
       <ArrowUp className="w-4 h-4 stroke-[2.5]" />
     </button>
@@ -263,28 +230,15 @@ export default function ManajemenRakPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [rakToEdit, setRakToEdit] = useState<Rak | null>(null);
 
-  // Drag and drop
-  const [dragId, setDragId] = useState<RakId | null>(null);
-  const [over, setOver] = useState<{ id: RakId; edge: DropEdge } | null>(null);
-  const [savingOrder, setSavingOrder] = useState(false);
-
   const sentinelRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef(0);
   const loadingRef = useRef(false);
   const requestIdRef = useRef(0);
   const searchRef = useRef('');
 
-  const raksRef = useRef<Rak[]>([]);
-  raksRef.current = raks;
-  const dragIdRef = useRef<RakId | null>(null);
-  const savingRef = useRef(false);
-
   // Status "mencari" diturunkan dari state, tidak perlu state terpisah
   const isSearchingUI = searchQuery.trim() !== debouncedSearchQuery;
   const isSearching = debouncedSearchQuery !== '';
-
-  // Urutan hanya bisa diubah saat daftar utuh (tanpa filter pencarian)
-  const canDrag = !isSearching && !isSearchingUI && !loading && !savingOrder;
 
   /* Debounce pencarian */
   useEffect(() => {
@@ -307,20 +261,32 @@ export default function ManajemenRakPage() {
       const to = from + ITEMS_PER_PAGE - 1;
       const term = sanitizeSearch(search);
 
-      // Jumlah total hanya dihitung pada halaman pertama
+      // Jumlah total hanya dihitung pada halaman pertama.
+      // Urutan: nama rak (A 01, A 02, B 05, ...), lalu id agar urutan stabil.
       let query: any = supabase
         .from(TABLE)
         .select(RAK_COLUMNS, pageNum === 0 ? { count: 'exact' } : undefined)
-        // Rak tanpa nomor urut ditaruh paling akhir; (nama_rak, id) menjaga urutan stabil
-        .order('nomor_urut', { ascending: true, nullsFirst: false })
         .order('nama_rak', { ascending: true })
         .order('id', { ascending: true })
         .range(from, to);
 
       if (term) {
-        const filters = [`nama_rak.ilike.%${term}%`, `kode_klasifikasi.ilike.%${term}%`];
-        // nomor_urut bertipe integer, jadi hanya dicocokkan jika kata kunci berupa angka
-        if (/^\d{1,9}$/.test(term)) filters.push(`nomor_urut.eq.${term}`);
+        const filters = [
+          `nama_rak.ilike.%${term}%`,
+          `kode_awal.ilike.%${term}%`,
+          `huruf_awal.ilike.%${term}%`,
+          `kode_akhir.ilike.%${term}%`,
+          `huruf_akhir.ilike.%${term}%`,
+        ];
+
+        // Nama kategori ada di tabel lain: cari id kategori yang cocok, lalu cocokkan kategori_id
+        const { data: kat } = await supabase
+          .from('kategori')
+          .select('id')
+          .ilike('nama_kategori', `%${term}%`);
+        const ids = (kat ?? []).map((k: { id: number }) => k.id);
+        if (ids.length > 0) filters.push(`kategori_id.in.(${ids.join(',')})`);
+
         query = query.or(filters.join(','));
       }
 
@@ -371,106 +337,7 @@ export default function ManajemenRakPage() {
     return () => io.disconnect();
   }, [hasMore, raks.length, fetchRaks]);
 
-  /* ───────────── Drag and drop ───────────── */
-
-  const endDrag = useCallback(() => {
-    dragIdRef.current = null;
-    setDragId(null);
-    setOver(null);
-  }, []);
-
-  /**
-   * Pindahkan rak `fromId` ke posisi rak `targetId`.
-   * Daftar yang termuat selalu awalan dari urutan global, jadi nomor baru
-   * = indeks + 1. Tampilan diperbarui dulu (optimistis), lalu disimpan lewat
-   * fungsi SQL `pindah_rak`; jika gagal, tampilan dikembalikan.
-   */
-  const moveRak = useCallback(async (fromId: RakId, targetId: RakId) => {
-    if (savingRef.current || fromId === targetId) return;
-
-    const prev = raksRef.current;
-    const a = prev.findIndex((r) => r.id === fromId);
-    const b = prev.findIndex((r) => r.id === targetId);
-    if (a === -1 || b === -1) return;
-
-    const next = [...prev];
-    const [moved] = next.splice(a, 1);
-    next.splice(b, 0, moved);
-
-    setRaks(next.map((r, i) => ({ ...r, nomor_urut: i + 1 })));
-
-    savingRef.current = true;
-    setSavingOrder(true);
-    try {
-      const { error } = await supabase.rpc('pindah_rak', {
-        p_id: String(fromId),
-        p_target: String(targetId),
-      });
-      if (error) throw error;
-    } catch (err) {
-      console.error('Gagal menyimpan urutan rak:', err);
-      setRaks(prev);
-      alert('Gagal menyimpan urutan rak. Urutan dikembalikan seperti semula.');
-    } finally {
-      savingRef.current = false;
-      setSavingOrder(false);
-    }
-  }, []);
-
-  const handleDragStart = useCallback((e: React.DragEvent<HTMLDivElement>, rak: Rak) => {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(rak.id)); // Firefox butuh data agar drag mulai
-    dragIdRef.current = rak.id;
-    setDragId(rak.id);
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>, rak: Rak) => {
-    const fromId = dragIdRef.current;
-    if (fromId === null) return;
-
-    e.preventDefault(); // izinkan drop
-    e.dataTransfer.dropEffect = 'move';
-
-    if (rak.id === fromId) {
-      setOver((prev) => (prev === null ? prev : null));
-      return;
-    }
-
-    const list = raksRef.current;
-    const a = list.findIndex((r) => r.id === fromId);
-    const b = list.findIndex((r) => r.id === rak.id);
-    // Geser ke bawah: mendarat di bawah target. Geser ke atas: di atas target.
-    const edge: DropEdge = a < b ? 'bottom' : 'top';
-
-    setOver((prev) =>
-      prev && prev.id === rak.id && prev.edge === edge ? prev : { id: rak.id, edge }
-    );
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>, target: Rak) => {
-      e.preventDefault();
-      const fromId = dragIdRef.current;
-      endDrag();
-      if (fromId === null) return;
-      moveRak(fromId, target.id);
-    },
-    [endDrag, moveRak]
-  );
-
-  // Alt + panah atas/bawah: geser satu posisi lewat keyboard
-  const handleMoveStep = useCallback(
-    (rak: Rak, direction: -1 | 1) => {
-      const list = raksRef.current;
-      const idx = list.findIndex((r) => r.id === rak.id);
-      const target = list[idx + direction];
-      if (idx === -1 || !target) return;
-      moveRak(rak.id, target.id);
-    },
-    [moveRak]
-  );
-
-  /* ───────────── Handler lain (stabil agar RakRow tidak render ulang) ───────────── */
+  /* ───────────── Handler (stabil agar RakRow tidak render ulang) ───────────── */
 
   const handleAddRak = useCallback(() => {
     setRakToEdit(null);
@@ -523,32 +390,23 @@ export default function ManajemenRakPage() {
         const { error } = await supabase.from(TABLE).update(formData).eq('id', rakToEdit.id);
         if (error) throw error;
       } else {
-        const payload = { ...formData } as RakFormData & { nomor_urut?: number | null };
-
-        // Rak baru otomatis ditaruh paling akhir; urutannya diatur lewat drag and drop
-        if (payload.nomor_urut == null) {
-          const { data: last } = await supabase
-            .from(TABLE)
-            .select('nomor_urut')
-            .not('nomor_urut', 'is', null)
-            .order('nomor_urut', { ascending: false })
-            .limit(1);
-          payload.nomor_urut = ((last?.[0]?.nomor_urut as number | undefined) ?? 0) + 1;
-        }
-
-        const { error } = await supabase.from(TABLE).insert([payload]);
+        const { error } = await supabase.from(TABLE).insert([formData]);
         if (error) throw error;
       }
     } catch (err: any) {
       console.error('Gagal menyimpan data rak:', err);
       throw new Error(
         err?.code === '23505'
-          ? 'Nama rak atau nomor urut sudah dipakai rak lain.'
-          : 'Terjadi kesalahan saat menyimpan data rak.'
+          ? 'Nama rak sudah dipakai rak lain.'
+          : err?.code === '23514'
+            ? 'Kode dan huruf klasifikasi harus diisi berpasangan (awal dan akhir).'
+            : err?.code === '23503'
+              ? 'Kategori yang dipilih tidak ditemukan.'
+              : 'Terjadi kesalahan saat menyimpan data rak.'
       );
     }
 
-    // Muat ulang dari awal: nomor urut yang berubah memengaruhi posisi rak di daftar
+    // Muat ulang dari awal: perubahan nama rak memengaruhi posisi rak di daftar
     pageRef.current = 0;
     setHasMore(true);
     fetchRaks(0, searchRef.current, true);
@@ -578,14 +436,14 @@ export default function ManajemenRakPage() {
                 )}
               </div>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-0.5">
-                Kelola daftar rak dan kode klasifikasi buku perpustakaan.
+                Kelola daftar rak, kategori, dan rentang klasifikasi buku perpustakaan.
               </p>
             </div>
 
             <button
               type="button"
               onClick={handleAddRak}
-              className="inline-flex items-center justify-center gap-1.5 h-9 px-4 shrink-0 text-[11px] font-extrabold uppercase tracking-wider text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
+              className={`inline-flex items-center justify-center gap-1.5 h-9 px-4 shrink-0 text-[11px] font-extrabold uppercase tracking-wider rounded-lg ${BTN_PRIMARY}`}
             >
               <Plus className="h-3.5 w-3.5 stroke-[3]" />
               Tambah Rak
@@ -599,7 +457,7 @@ export default function ManajemenRakPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari rak berdasarkan nama, kode klasifikasi, atau nomor urut..."
+              placeholder="Cari rak berdasarkan nama, kategori, atau kode klasifikasi..."
               aria-label="Cari rak"
               className="w-full h-9 pl-10 pr-28 text-xs font-medium bg-white border border-blue-100 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-colors"
             />
@@ -609,20 +467,6 @@ export default function ManajemenRakPage() {
               </span>
             )}
           </div>
-
-          {/* Petunjuk drag and drop */}
-          {raks.length > 0 && (
-            <p
-              className="px-1 text-[11px] font-semibold text-white/90 [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]"
-              aria-live="polite"
-            >
-              {isSearching || isSearchingUI
-                ? 'Pengurutan dinonaktifkan saat pencarian. Kosongkan kolom cari untuk menggeser rak.'
-                : savingOrder
-                  ? 'Menyimpan urutan...'
-                  : 'Seret baris untuk mengubah urutan rak. Keyboard: Alt + ↑ / ↓.'}
-            </p>
-          )}
 
           {showEmpty && (
             <div className="mx-auto max-w-md bg-white border border-blue-100 rounded-xl py-8 px-6 flex flex-col items-center text-center">
@@ -644,31 +488,18 @@ export default function ManajemenRakPage() {
             <div className="bg-white border border-blue-100 rounded-xl overflow-hidden">
               {/* Judul kolom */}
               <div className="grid grid-cols-12 gap-3 px-3 py-1.5 bg-slate-50 border-b border-blue-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">
-                <span className="col-span-1 pl-4">Urut</span>
-                <span className="col-span-5">Nama Rak</span>
-                <span className="col-span-3">Kode Klasifikasi</span>
+                <span className="col-span-2">Nama Rak</span>
+                <span className="col-span-3">Kategori</span>
+                <span className="col-span-4">Klasifikasi (Dari – Hingga)</span>
                 <span className="col-span-2">Dibuat</span>
                 <span className="col-span-1 text-right">Aksi</span>
               </div>
 
-              <div className="divide-y divide-blue-50" aria-busy={loading || savingOrder}>
+              <div className="divide-y divide-blue-50" aria-busy={loading}>
                 {showSkeleton
                   ? Array.from({ length: 10 }, (_, i) => <SkeletonRow key={i} />)
                   : raks.map((rak) => (
-                      <RakRow
-                        key={rak.id}
-                        rak={rak}
-                        canDrag={canDrag}
-                        isDragging={dragId === rak.id}
-                        dropEdge={over && over.id === rak.id ? over.edge : null}
-                        onEdit={handleEditRak}
-                        onDelete={handleDeleteRak}
-                        onDragStart={handleDragStart}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        onDragEnd={endDrag}
-                        onMoveStep={handleMoveStep}
-                      />
+                      <RakRow key={rak.id} rak={rak} onEdit={handleEditRak} onDelete={handleDeleteRak} />
                     ))}
               </div>
             </div>
