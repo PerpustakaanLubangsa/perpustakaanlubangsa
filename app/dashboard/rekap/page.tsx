@@ -36,8 +36,10 @@ interface PetugasSummary {
   hadir: number;
   izin: number;
   alpha: number;
-  total: number;
-  persen: number;
+  total: number; // = hadir + izin + alpha
+  persenHadir: number;
+  persenIzin: number;
+  persenAlpha: number;
 }
 
 /* ───────────────────────── Konstanta & helper ───────────────────────── */
@@ -55,6 +57,31 @@ const FETCH_SIZE = 1000; // batas default Supabase per permintaan
 const pad = (n: number) => String(n).padStart(2, '0');
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/**
+ * Hitung persentase Hadir / Izin / Alpha dari jumlah ketiga keterangan.
+ * Memakai metode sisa terbesar agar ketiganya selalu berjumlah tepat 100%.
+ */
+const hitungPersen = (hadir: number, izin: number, alpha: number): [number, number, number] => {
+  const total = hadir + izin + alpha;
+  if (total === 0) return [0, 0, 0];
+
+  const raw = [hadir, izin, alpha].map((v) => (v * 100) / total);
+  const hasil = raw.map(Math.floor);
+  let sisa = 100 - hasil.reduce((a, b) => a + b, 0);
+
+  const urutan = raw
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+
+  for (const { i } of urutan) {
+    if (sisa <= 0) break;
+    hasil[i]++;
+    sisa--;
+  }
+
+  return [hasil[0], hasil[1], hasil[2]];
+};
 
 /** "2026-10-07" → "7 Okt 2026" (tanpa new Date, supaya tidak geser zona waktu) */
 const formatTanggal = (t: string) => {
@@ -242,20 +269,24 @@ export default function RekapPage() {
     setMonth(today.getMonth());
   };
 
-  /* Ringkasan keseluruhan */
+  /* Ringkasan keseluruhan: total = Hadir + Izin + Alpha */
   const totals = useMemo(() => {
-    const t = { total: rows.length, hadir: 0, izin: 0, alpha: 0 };
+    const t = { total: 0, hadir: 0, izin: 0, alpha: 0 };
     rows.forEach((r) => {
       if (r.status === 'Hadir') t.hadir++;
       else if (r.status === 'Izin') t.izin++;
       else if (r.status === 'Alpha') t.alpha++;
     });
+    t.total = t.hadir + t.izin + t.alpha;
     return t;
   }, [rows]);
 
-  const persenTotal = totals.total ? Math.round((totals.hadir / totals.total) * 100) : 0;
+  const persenTotal = useMemo(() => {
+    const [hadir, izin, alpha] = hitungPersen(totals.hadir, totals.izin, totals.alpha);
+    return { hadir, izin, alpha };
+  }, [totals]);
 
-  /* Ringkasan per petugas */
+  /* Ringkasan per petugas: persentase dari jumlah Hadir + Izin + Alpha petugas itu sendiri */
   const petugas = useMemo<PetugasSummary[]>(() => {
     const map = new Map<string, PetugasSummary>();
 
@@ -263,10 +294,19 @@ export default function RekapPage() {
       const key = norm(r.nama);
       let p = map.get(key);
       if (!p) {
-        p = { key, nama: r.nama, hadir: 0, izin: 0, alpha: 0, total: 0, persen: 0 };
+        p = {
+          key,
+          nama: r.nama,
+          hadir: 0,
+          izin: 0,
+          alpha: 0,
+          total: 0,
+          persenHadir: 0,
+          persenIzin: 0,
+          persenAlpha: 0,
+        };
         map.set(key, p);
       }
-      p.total++;
       if (r.status === 'Hadir') p.hadir++;
       else if (r.status === 'Izin') p.izin++;
       else if (r.status === 'Alpha') p.alpha++;
@@ -274,7 +314,11 @@ export default function RekapPage() {
 
     const list = Array.from(map.values());
     list.forEach((p) => {
-      p.persen = p.total ? Math.round((p.hadir / p.total) * 100) : 0;
+      p.total = p.hadir + p.izin + p.alpha;
+      const [ph, pi, pa] = hitungPersen(p.hadir, p.izin, p.alpha);
+      p.persenHadir = ph;
+      p.persenIzin = pi;
+      p.persenAlpha = pa;
     });
     return list.sort((a, b) => a.nama.localeCompare(b.nama, 'id'));
   }, [rows]);
@@ -374,7 +418,7 @@ export default function RekapPage() {
         const ws = wb.addWorksheet('Per Petugas', {
           views: [{ state: 'frozen', ySplit: HEADER_ROW, showGridLines: false }],
           pageSetup: {
-            orientation: 'portrait',
+            orientation: 'landscape',
             paperSize: 9,
             fitToPage: true,
             fitToWidth: 1,
@@ -382,7 +426,17 @@ export default function RekapPage() {
           },
         });
 
-        const headers = ['No', 'Nama Petugas', 'Hadir', 'Izin', 'Alpha', 'Total', 'Kehadiran'];
+        const headers = [
+          'No',
+          'Nama Petugas',
+          'Hadir',
+          'Izin',
+          'Alpha',
+          'Total',
+          '% Hadir',
+          '% Izin',
+          '% Alpha',
+        ];
         ws.columns = [
           { width: 6 },
           { width: 34 },
@@ -390,7 +444,9 @@ export default function RekapPage() {
           { width: 10 },
           { width: 10 },
           { width: 10 },
-          { width: 14 },
+          { width: 11 },
+          { width: 11 },
+          { width: 11 },
         ];
 
         buildTitle(
@@ -405,7 +461,17 @@ export default function RekapPage() {
 
         petugasFiltered.forEach((p, idx) => {
           const row = ws.getRow(firstData + idx);
-          row.values = [idx + 1, p.nama, p.hadir, p.izin, p.alpha, p.total, p.total ? p.hadir / p.total : 0];
+          row.values = [
+            idx + 1,
+            p.nama,
+            p.hadir,
+            p.izin,
+            p.alpha,
+            p.total,
+            p.persenHadir / 100,
+            p.persenIzin / 100,
+            p.persenAlpha / 100,
+          ];
 
           row.eachCell({ includeEmpty: true }, (cell, col) => {
             if (col > headers.length) return;
@@ -418,20 +484,24 @@ export default function RekapPage() {
           });
 
           row.getCell(2).font = { name: 'Calibri', size: 11, bold: true, color: { argb: XL.text } };
+
+          // Hadir, Izin, Alpha (jumlah)
           row.getCell(3).font = { name: 'Calibri', size: 11, bold: true, color: { argb: XL_STATUS.Hadir.fg } };
           row.getCell(4).font = { name: 'Calibri', size: 11, bold: true, color: { argb: XL_STATUS.Izin.fg } };
           row.getCell(5).font = { name: 'Calibri', size: 11, bold: true, color: { argb: XL_STATUS.Alpha.fg } };
 
-          const pct = row.getCell(7);
-          pct.numFmt = '0%';
-          pct.font = {
-            name: 'Calibri',
-            size: 11,
-            bold: true,
-            color: {
-              argb: p.persen >= 80 ? XL_STATUS.Hadir.fg : p.persen >= 50 ? XL_STATUS.Izin.fg : XL_STATUS.Alpha.fg,
-            },
-          };
+          // % Hadir, % Izin, % Alpha
+          const pctCols: { col: number; fg: string }[] = [
+            { col: 7, fg: XL_STATUS.Hadir.fg },
+            { col: 8, fg: XL_STATUS.Izin.fg },
+            { col: 9, fg: XL_STATUS.Alpha.fg },
+          ];
+          pctCols.forEach(({ col, fg }) => {
+            const c = row.getCell(col);
+            c.numFmt = '0%';
+            c.font = { name: 'Calibri', size: 11, bold: true, color: { argb: fg } };
+          });
+
           row.height = 20;
         });
 
@@ -443,10 +513,11 @@ export default function RekapPage() {
             hadir: a.hadir + p.hadir,
             izin: a.izin + p.izin,
             alpha: a.alpha + p.alpha,
-            total: a.total + p.total,
           }),
-          { hadir: 0, izin: 0, alpha: 0, total: 0 }
+          { hadir: 0, izin: 0, alpha: 0 }
         );
+        const sumTotal = sum.hadir + sum.izin + sum.alpha;
+        const [sumPh, sumPi, sumPa] = hitungPersen(sum.hadir, sum.izin, sum.alpha);
 
         const totalRowNo = lastData + 1;
         const totalRow = ws.getRow(totalRowNo);
@@ -455,12 +526,16 @@ export default function RekapPage() {
         totalRow.getCell(3).value = { formula: `SUM(C${firstData}:C${lastData})`, result: sum.hadir };
         totalRow.getCell(4).value = { formula: `SUM(D${firstData}:D${lastData})`, result: sum.izin };
         totalRow.getCell(5).value = { formula: `SUM(E${firstData}:E${lastData})`, result: sum.alpha };
-        totalRow.getCell(6).value = { formula: `SUM(F${firstData}:F${lastData})`, result: sum.total };
-        totalRow.getCell(7).value = {
-          formula: `IFERROR(C${totalRowNo}/F${totalRowNo},0)`,
-          result: sum.total ? sum.hadir / sum.total : 0,
+        totalRow.getCell(6).value = {
+          formula: `SUM(C${totalRowNo}:E${totalRowNo})`,
+          result: sumTotal,
         };
-        totalRow.getCell(7).numFmt = '0%';
+        totalRow.getCell(7).value = sumPh / 100;
+        totalRow.getCell(8).value = sumPi / 100;
+        totalRow.getCell(9).value = sumPa / 100;
+        [7, 8, 9].forEach((c) => {
+          totalRow.getCell(c).numFmt = '0%';
+        });
 
         for (let col = 1; col <= headers.length; col++) {
           const cell = totalRow.getCell(col);
@@ -644,12 +719,8 @@ export default function RekapPage() {
                 </span>
                 <span className="text-[10px] text-slate-500 font-medium block">
                   {s.key === 'total'
-                    ? `Kehadiran ${loading ? '–' : persenTotal}%`
-                    : `${
-                        loading || !totals.total
-                          ? 0
-                          : Math.round((totals[s.key] / totals.total) * 100)
-                      }% dari total`}
+                    ? `Kehadiran ${loading ? '–' : persenTotal.hadir}%`
+                    : `${loading ? 0 : persenTotal[s.key]}% dari total`}
                 </span>
               </div>
               <div
@@ -750,7 +821,7 @@ export default function RekapPage() {
                       <th className="px-3 py-3 text-center">Izin</th>
                       <th className="px-3 py-3 text-center">Alpha</th>
                       <th className="px-3 py-3 text-center">Total</th>
-                      <th className="px-5 py-3 min-w-[180px]">Kehadiran</th>
+                      <th className="px-5 py-3 min-w-[240px]">Persentase</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -779,22 +850,22 @@ export default function RekapPage() {
                           {p.total}
                         </td>
                         <td className="px-5 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${
-                                  p.persen >= 80
-                                    ? 'bg-blue-600'
-                                    : p.persen >= 50
-                                    ? 'bg-amber-500'
-                                    : 'bg-red-500'
-                                }`}
-                                style={{ width: `${p.persen}%` }}
-                              />
+                          <div className="space-y-1.5">
+                            {/* Bar bertingkat: Hadir | Izin | Alpha, dihitung dari total ketiganya */}
+                            <div
+                              className="flex h-2 rounded-full bg-slate-100 overflow-hidden"
+                              role="img"
+                              aria-label={`Hadir ${p.persenHadir}%, Izin ${p.persenIzin}%, Alpha ${p.persenAlpha}%`}
+                            >
+                              <div className="h-full bg-blue-600" style={{ width: `${p.persenHadir}%` }} />
+                              <div className="h-full bg-amber-500" style={{ width: `${p.persenIzin}%` }} />
+                              <div className="h-full bg-red-500" style={{ width: `${p.persenAlpha}%` }} />
                             </div>
-                            <span className="text-[11px] font-black text-slate-700 w-9 text-right">
-                              {p.persen}%
-                            </span>
+                            <div className="flex items-center gap-3 text-[11px] font-black">
+                              <span className="text-blue-700">Hadir {p.persenHadir}%</span>
+                              <span className="text-amber-600">Izin {p.persenIzin}%</span>
+                              <span className="text-red-600">Alpha {p.persenAlpha}%</span>
+                            </div>
                           </div>
                         </td>
                       </tr>
