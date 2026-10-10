@@ -1,12 +1,31 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Calendar, BookOpen, Tag, Barcode, Building, FileText, Hash, Eye, Bookmark, Loader2, User } from 'lucide-react';
+import {
+  X,
+  Calendar,
+  BookOpen,
+  Tag,
+  Barcode,
+  Building,
+  FileText,
+  Hash,
+  Eye,
+  Bookmark,
+  Loader2,
+  User,
+  MapPin,
+  CalendarClock,
+  AlertTriangle,
+} from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Lama peminjaman (hari). Pinjam tgl 1 -> jatuh tempo tgl 5, tgl 6 sudah terlambat.
+const LAMA_PINJAM_HARI = 5;
 
 interface Book {
   id: string;
@@ -32,6 +51,7 @@ interface Peminjam {
   kamar: string | null;
   jenjang: string | null;
   rank: string | null;
+  tglPinjam: string | null; // format YYYY-MM-DD dari kolom sirkulasi.tgl_pinjam
 }
 
 interface Eksemplar {
@@ -48,6 +68,35 @@ interface BookDetailModalProps {
   book: Book | null;
   isOpen: boolean;
   onClose: () => void;
+}
+
+// Ubah string tanggal (YYYY-MM-DD) menjadi Date lokal tanpa pergeseran zona waktu
+function parseDateOnly(value: string): Date | null {
+  const [y, m, d] = value.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+function formatTanggal(date: Date): string {
+  return date.toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+// Hitung tanggal jatuh tempo & selisih hari dari hari ini
+// selisih > 0 : sisa hari, 0 : jatuh tempo hari ini, < 0 : terlambat
+function getTempoInfo(tglPinjam: string | null, today: Date) {
+  if (!tglPinjam) return null;
+  const pinjam = parseDateOnly(tglPinjam);
+  if (!pinjam) return null;
+
+  const tempo = new Date(pinjam);
+  tempo.setDate(tempo.getDate() + (LAMA_PINJAM_HARI - 1));
+
+  const selisih = Math.round((tempo.getTime() - today.getTime()) / 86400000);
+  return { pinjam, tempo, selisih };
 }
 
 export default function BookDetailModal({ book, isOpen, onClose }: BookDetailModalProps) {
@@ -91,18 +140,25 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
       const peminjamByKode: Record<string, Peminjam> = {};
 
       if (kodeDipinjam.length > 0) {
-        // Peminjaman aktif = belum ada tanggal kembali
+        // Kolom tgl_kembali kosong semua, jadi tidak dipakai sebagai filter.
+        // Eksemplar yang sedang dipinjam = peminjaman TERBARU berdasarkan tgl_pinjam.
         const { data: sirkData } = await supabase
           .from('sirkulasi')
-          .select('kode_eksemplar, nis, nama_anggota, kamar, created_at')
+          .select('kode_eksemplar, nis, nama_anggota, kamar, tgl_pinjam, created_at')
           .in('kode_eksemplar', kodeDipinjam)
-          .is('tgl_kembali', null)
+          .order('tgl_pinjam', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false });
 
         if (cancelled) return;
 
         if (sirkData && sirkData.length > 0) {
-          const nisList = Array.from(new Set(sirkData.map((s) => s.nis)));
+          // Ambil hanya peminjaman terbaru untuk tiap kode
+          const latestByKode: Record<string, (typeof sirkData)[number]> = {};
+          sirkData.forEach((s) => {
+            if (!latestByKode[s.kode_eksemplar]) latestByKode[s.kode_eksemplar] = s;
+          });
+
+          const nisList = Array.from(new Set(Object.values(latestByKode).map((s) => s.nis)));
 
           const { data: anggotaData } = await supabase
             .from('anggota')
@@ -116,16 +172,15 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
             anggotaByNis[a.nis] = a;
           });
 
-          // Ambil peminjaman terbaru untuk tiap kode
-          sirkData.forEach((s) => {
-            if (peminjamByKode[s.kode_eksemplar]) return;
+          Object.entries(latestByKode).forEach(([kode, s]) => {
             const a = anggotaByNis[s.nis];
-            peminjamByKode[s.kode_eksemplar] = {
+            peminjamByKode[kode] = {
               nama: a?.nama || s.nama_anggota || '-',
               organisasi: a?.organisasi ?? null,
               kamar: a?.kamar ?? s.kamar ?? null,
               jenjang: a?.jenjang ?? null,
               rank: a?.rank ?? null,
+              tglPinjam: s.tgl_pinjam ?? null,
             };
           });
         }
@@ -178,6 +233,10 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
       return '-';
     }
   };
+
+  // Hari ini (jam 00:00, waktu lokal) untuk perhitungan jatuh tempo
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   return (
     <div
@@ -329,82 +388,145 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
               </div>
             </div>
 
-            {/* Eksemplar */}
+            {/* Eksemplar (gaya kartu) */}
             <div className="pt-1">
               <h4 className="text-sm font-bold text-blue-800 mb-3">
                 Ketersediaan Eksemplar Fisik ({eksemplarList.length})
               </h4>
-              <div className="border border-blue-200 rounded-xl overflow-hidden text-sm bg-white">
-                {loadingEksemplar ? (
-                  <div className="p-5 text-center text-slate-700 flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> Memuat salinan...
-                  </div>
-                ) : eksemplarList.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[560px] text-left border-collapse">
-                      <thead>
-                        <tr className="bg-blue-50 border-b border-blue-200 text-blue-900 text-xs font-bold">
-                          <th className="p-3 pl-4">Barcode / Kode</th>
-                          <th className="p-3">No. Panggil</th>
-                          <th className="p-3">Lokasi Rak</th>
-                          <th className="p-3 pr-4">Status / Peminjam</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-blue-100 text-slate-800">
-                        {eksemplarList.map((item) => {
-                          const tersedia = item.status?.toLowerCase() === 'tersedia';
-                          const p = item.peminjam;
-                          const detailPeminjam = p
-                            ? [p.organisasi, p.kamar && `Kamar ${p.kamar}`, p.jenjang, p.rank]
-                                .filter(Boolean)
-                                .join(' • ')
-                            : '';
 
-                          return (
-                            <tr key={item.id} className="align-top">
-                              <td className="p-3 pl-4">
-                                <div className="flex items-center gap-1.5 font-mono font-medium text-slate-900">
-                                  <Barcode className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                                  {item.kode}
+              {loadingEksemplar ? (
+                <div className="p-5 text-center text-slate-700 flex items-center justify-center gap-2 border border-blue-200 rounded-xl bg-white text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> Memuat salinan...
+                </div>
+              ) : eksemplarList.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {eksemplarList.map((item) => {
+                    const tersedia = item.status?.toLowerCase() === 'tersedia';
+                    const p = item.peminjam;
+                    const tempo = !tersedia && p ? getTempoInfo(p.tglPinjam, today) : null;
+                    const terlambat = !!tempo && tempo.selisih < 0;
+
+                    const detailPeminjam = p
+                      ? [p.organisasi, p.kamar && `Kamar ${p.kamar}`, p.jenjang, p.rank]
+                          .filter(Boolean)
+                          .join(' • ')
+                      : '';
+
+                    const cardStyle = tersedia
+                      ? 'border-emerald-200 bg-emerald-50/40'
+                      : terlambat
+                      ? 'border-red-300 bg-red-50/50'
+                      : 'border-amber-200 bg-amber-50/40';
+
+                    const badgeStyle = tersedia
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                      : 'bg-amber-50 text-amber-800 border-amber-300';
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`min-w-0 rounded-xl border p-3.5 text-sm ${cardStyle}`}
+                      >
+                        {/* Kode + status */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-1.5 font-mono font-semibold text-slate-900 min-w-0">
+                            <Barcode className="h-4 w-4 text-blue-600 shrink-0" />
+                            <span className="break-all">{item.kode}</span>
+                          </div>
+                          <span
+                            className={`shrink-0 inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${badgeStyle}`}
+                          >
+                            {item.status || 'Unknown'}
+                          </span>
+                        </div>
+
+                        {/* No. panggil & rak */}
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                              No. Panggil
+                            </div>
+                            <div className="mt-0.5 font-medium text-slate-900 break-words">
+                              {item.nomor_panggil || '-'}
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                              Lokasi Rak
+                            </div>
+                            <div className="mt-0.5 flex items-start gap-1 font-medium text-slate-900">
+                              <MapPin className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
+                              <span className="break-words min-w-0">{item.lokasi_rak || '-'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Info peminjam & jatuh tempo (hanya jika dipinjam) */}
+                        {!tersedia && (
+                          <div className="mt-3 border-t border-slate-200/80 pt-3 space-y-2.5">
+                            {p && (
+                              <div className="flex items-start gap-1.5">
+                                <User className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-slate-900 break-words">{p.nama}</div>
+                                  {detailPeminjam && (
+                                    <div className="text-xs text-slate-600 break-words">{detailPeminjam}</div>
+                                  )}
                                 </div>
-                              </td>
-                              <td className="p-3 font-medium">{item.nomor_panggil || '-'}</td>
-                              <td className="p-3">{item.lokasi_rak || '-'}</td>
-                              <td className="p-3 pr-4">
-                                <span
-                                  className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                                    tersedia
-                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                      : 'bg-amber-50 text-amber-800 border-amber-300'
-                                  }`}
-                                >
-                                  {item.status || 'Unknown'}
-                                </span>
+                              </div>
+                            )}
 
-                                {!tersedia && p && (
-                                  <div className="mt-2 flex items-start gap-1.5">
-                                    <User className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
-                                    <div className="min-w-0">
-                                      <div className="font-semibold text-slate-900 break-words">{p.nama}</div>
-                                      {detailPeminjam && (
-                                        <div className="text-xs text-slate-600 break-words">{detailPeminjam}</div>
-                                      )}
+                            {tempo ? (
+                              <div className="space-y-1.5">
+                                <div className="flex items-start gap-1.5 text-xs text-slate-700">
+                                  <CalendarClock className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
+                                  <div className="min-w-0">
+                                    <div>
+                                      Dipinjam{' '}
+                                      <span className="font-semibold text-slate-900">
+                                        {formatTanggal(tempo.pinjam)}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      Batas kembali{' '}
+                                      <span className="font-semibold text-slate-900">
+                                        {formatTanggal(tempo.tempo)}
+                                      </span>
                                     </div>
                                   </div>
+                                </div>
+
+                                {terlambat ? (
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-red-100 border border-red-300 px-2 py-0.5 text-xs font-semibold text-red-800">
+                                    <AlertTriangle className="h-3 w-3" strokeWidth={2.4} />
+                                    Terlambat {Math.abs(tempo.selisih)} hari
+                                  </span>
+                                ) : tempo.selisih === 0 ? (
+                                  <span className="inline-flex items-center rounded-md bg-amber-100 border border-amber-300 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                                    Jatuh tempo hari ini
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-xs font-semibold text-blue-800">
+                                    Sisa {tempo.selisih} hari
+                                  </span>
                                 )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="p-5 text-center text-slate-600 italic">
-                    Belum ada data eksemplar fisik untuk katalog ini.
-                  </div>
-                )}
-              </div>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-slate-500 italic">
+                                Tanggal pinjam tidak tercatat.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-5 text-center text-sm text-slate-600 italic border border-blue-200 rounded-xl bg-white">
+                  Belum ada data eksemplar fisik untuk katalog ini.
+                </div>
+              )}
             </div>
           </div>
         </div>

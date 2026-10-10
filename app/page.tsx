@@ -1,7 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { Loader2, BookX, Image as ImageIcon, BookOpenText, ArrowUp } from 'lucide-react';
+import {
+  Loader2,
+  BookX,
+  Image as ImageIcon,
+  BookOpenText,
+  ArrowUp,
+  MapPin,
+} from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import BookDetailModal from './components/book-detail-modal';
 import HeroSearch from './components/hero-search';
@@ -27,6 +34,17 @@ interface Book {
   updated_at: string;
   jumlah_baca: number;
   jumlah_pinjam: number;
+  // Data eksemplar (dihitung dari tabel `eksemplar`).
+  // undefined = data eksemplar belum tersedia / gagal dimuat
+  eks_total?: number;
+  eks_tersedia?: number;
+  eks_rak?: string[];
+}
+
+interface StockInfo {
+  total: number;
+  tersedia: number;
+  rak: string[];
 }
 
 const ITEMS_PER_PAGE = 25;
@@ -37,8 +55,54 @@ const SEARCH_MAX_RESULTS = 1000;
 // Jarak scroll (px) sebelum tombol "ke atas" muncul
 const SCROLL_TOP_THRESHOLD = 400;
 
+// Jumlah maksimum rak yang ditampilkan di kartu (sisanya jadi "+N")
+const MAX_RAK_SHOWN = 2;
+
 const BOOK_COLUMNS =
   'id, judul, penulis, isbn_issn, penerbit, tahun_terbit, deskripsi_fisik, sampul_url, abstrak, kategori, topik, created_at, updated_at, jumlah_baca, jumlah_pinjam';
+
+// Ambil & hitung eksemplar (jumlah tersedia + daftar rak) untuk sekumpulan buku sekaligus (1 query)
+async function fetchStockMap(bookIds: string[]): Promise<Map<string, StockInfo>> {
+  const stockMap = new Map<string, StockInfo>();
+  if (bookIds.length === 0) return stockMap;
+
+  // Default: semua buku dianggap punya 0 eksemplar
+  bookIds.forEach((id) => stockMap.set(id, { total: 0, tersedia: 0, rak: [] }));
+
+  const { data, error } = await supabase
+    .from('eksemplar')
+    .select('biblio_id, status, lokasi_rak')
+    .in('biblio_id', bookIds)
+    .limit(10000);
+
+  if (error) throw error;
+
+  (data || []).forEach(
+    (row: { biblio_id: string | null; status: string | null; lokasi_rak: string | null }) => {
+      if (!row.biblio_id) return;
+      const entry = stockMap.get(row.biblio_id);
+      if (!entry) return;
+
+      entry.total += 1;
+
+      // Status hanya "Tersedia" atau "Dipinjam"
+      if ((row.status || '').trim().toLowerCase() !== 'dipinjam') {
+        entry.tersedia += 1;
+      }
+
+      // Kumpulkan rak unik (abaikan yang kosong)
+      const rak = (row.lokasi_rak || '').trim();
+      if (rak && !entry.rak.includes(rak)) {
+        entry.rak.push(rak);
+      }
+    }
+  );
+
+  // Urutkan nama rak agar tampilan konsisten
+  stockMap.forEach((entry) => entry.rak.sort((a, b) => a.localeCompare(b, 'id', { numeric: true })));
+
+  return stockMap;
+}
 
 // Memoized Lazy Image untuk menghemat resource rendering
 const LazyImage = memo(function LazyImage({ src, alt }: { src: string; alt: string }) {
@@ -127,6 +191,67 @@ const ScrollToTopButton = memo(function ScrollToTopButton() {
   );
 });
 
+// Label status di pojok sampul:
+// - "Tersedia · N" (hijau) jika masih ada eksemplar tersedia, N = jumlah tersedia
+// - "Dipinjam" (kuning) jika semua eksemplar sedang dipinjam
+// - "Belum ada eksemplar" (abu-abu) jika belum ada data eksemplar
+const StatusBadge = memo(function StatusBadge({ book }: { book: Book }) {
+  if (book.eks_total === undefined) return null;
+
+  const tersedia = book.eks_tersedia ?? 0;
+
+  let content: React.ReactNode;
+  let style: string;
+
+  if (book.eks_total === 0) {
+    content = 'Belum ada eksemplar';
+    style = 'bg-slate-600 text-white';
+  } else if (tersedia === 0) {
+    content = 'Dipinjam';
+    style = 'bg-amber-500 text-white';
+  } else {
+    content = (
+      <>
+        Tersedia
+        <span className="rounded bg-white/25 px-1 text-[10px] leading-4">{tersedia}</span>
+      </>
+    );
+    style = 'bg-emerald-600 text-white';
+  }
+
+  return (
+    <span
+      className={`absolute top-2 left-2 z-10 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide shadow-md ${style}`}
+    >
+      {content}
+    </span>
+  );
+});
+
+// Informasi lokasi rak buku
+const RakInfo = memo(function RakInfo({ book }: { book: Book }) {
+  const raks = book.eks_rak ?? [];
+  if (raks.length === 0) return null;
+
+  const shown = raks.slice(0, MAX_RAK_SHOWN);
+  const extra = raks.length - shown.length;
+
+  return (
+    <div
+      className="mt-2 flex items-center gap-1 text-[11px] font-medium text-slate-500"
+      title={`Rak: ${raks.join(', ')}`}
+    >
+      <MapPin className="h-3 w-3 shrink-0 text-blue-500" strokeWidth={2.2} />
+      <span className="truncate">Rak {shown.join(', ')}</span>
+      {extra > 0 && (
+        <span className="shrink-0 rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-600">
+          +{extra}
+        </span>
+      )}
+    </div>
+  );
+});
+
 // Item Kartu Buku Terisolasi
 const BookCard = memo(
   React.forwardRef<HTMLDivElement, { book: Book; onClick: () => void }>(
@@ -164,6 +289,9 @@ const BookCard = memo(
                 Buka Detail
               </span>
             </div>
+
+            {/* Label status ketersediaan (pojok kiri atas sampul) */}
+            <StatusBadge book={book} />
           </div>
 
           {/* Informasi Buku */}
@@ -183,9 +311,14 @@ const BookCard = memo(
                 {book.judul}
               </h2>
             </div>
-            <p className="text-xs sm:text-[13px] text-slate-600 mt-1.5 truncate font-medium">
-              {book.penulis || 'Anonim'}
-            </p>
+            <div>
+              <p className="text-xs sm:text-[13px] text-slate-600 mt-1.5 truncate font-medium">
+                {book.penulis || 'Anonim'}
+              </p>
+
+              {/* Informasi lokasi rak */}
+              <RakInfo book={book} />
+            </div>
           </div>
         </div>
       );
@@ -283,10 +416,28 @@ export default function HomePage() {
         if (requestId !== requestIdRef.current) return;
 
         if (data) {
-          const mappedData: Book[] = data.map((b) => ({
-            ...b,
-            topik: Array.isArray(b.topik) ? b.topik : [],
-          }));
+          // Ambil data eksemplar untuk buku di halaman ini.
+          // Jika gagal, buku tetap tampil tanpa label status & rak.
+          let stockMap = new Map<string, StockInfo>();
+          try {
+            stockMap = await fetchStockMap(data.map((b) => b.id).filter(Boolean));
+          } catch (stockErr) {
+            console.error('Gagal memuat data eksemplar:', stockErr);
+          }
+
+          // Cek ulang: respons bisa usang selama menunggu data eksemplar
+          if (requestId !== requestIdRef.current) return;
+
+          const mappedData: Book[] = data.map((b) => {
+            const stock = stockMap.get(b.id);
+            return {
+              ...b,
+              topik: Array.isArray(b.topik) ? b.topik : [],
+              eks_total: stock?.total,
+              eks_tersedia: stock?.tersedia,
+              eks_rak: stock?.rak,
+            };
+          });
 
           // Saring duplikat berdasarkan 'id' sebelum disimpan ke state
           setBooks((prev) => {
