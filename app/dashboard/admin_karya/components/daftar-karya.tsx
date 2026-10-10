@@ -1,9 +1,10 @@
 'use client';
 
 import { memo, useCallback, useEffect, useState, useTransition } from 'react';
-import { Inbox, Loader2 } from 'lucide-react';
+import { Inbox, Loader2, Plus } from 'lucide-react';
 import AksiKarya from './aksi-karya';
 import EditorKarya from './editor-karya';
+import TambahKarya from './tambah-karya';
 import { muatKarya } from '../actions';
 import { tombol } from '../tombol';
 import type { KaryaAdmin, StatusKarya } from '../tipe';
@@ -90,6 +91,7 @@ export default function DaftarKarya({
   const [galat, setGalat] = useState('');
   const [info, setInfo] = useState('');
   const [sedangEdit, setSedangEdit] = useState<string | null>(null);
+  const [sedangTambah, setSedangTambah] = useState(false);
   const [memuat, mulaiMuat] = useTransition();
 
   // Pemberitahuan singkat setelah aksi berhasil
@@ -115,6 +117,21 @@ export default function DaftarKarya({
     setInfo('Perubahan tersimpan.');
   }, []);
 
+  // Karya baru berstatus approved. Hanya masuk ke daftar lokal jika tab yang terbuka adalah "Disetujui"
+  // (urutan terbaru di atas, sama dengan urutan server); di tab lain cukup pemberitahuan.
+  // Angka di tab diperbarui lewat revalidatePath di server action.
+  const ditambahkan = useCallback(
+    (item: KaryaAdmin) => {
+      if (item.status === status) {
+        setItems((sebelumnya) => [item, ...sebelumnya.filter((k) => k.id !== item.id)]);
+        setTotal((t) => t + 1);
+      }
+      setSedangTambah(false);
+      setInfo('Karya ditambahkan dan langsung tayang di galeri.');
+    },
+    [status]
+  );
+
   const muatLagi = () => {
     setGalat('');
     mulaiMuat(async () => {
@@ -135,6 +152,13 @@ export default function DaftarKarya({
 
   return (
     <div>
+      <div className="mb-5 flex justify-end pb-1">
+        <button type="button" onClick={() => setSedangTambah(true)} className={tombol.utama}>
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Tambah karya
+        </button>
+      </div>
+
       <p className="sr-only" role="status" aria-live="polite">
         {info}
       </p>
@@ -184,6 +208,8 @@ export default function DaftarKarya({
           </div>
         </>
       )}
+
+      {sedangTambah && <TambahKarya onTutup={() => setSedangTambah(false)} onTersimpan={ditambahkan} />}
 
       {sedangEdit && (
         <EditorKarya

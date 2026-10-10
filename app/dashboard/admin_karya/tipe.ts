@@ -38,3 +38,7 @@ export interface MasukanEdit {
   isi: string;
   foto_url: string;
 }
+// Masukan form "Tambah karya" oleh petugas. anggota_id kosong berarti penulis bukan anggota terdaftar.
+export interface MasukanTambah extends MasukanEdit {
+  anggota_id: string;
+}

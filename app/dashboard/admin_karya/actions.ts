@@ -1,15 +1,17 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { BATAS } from '../../kirim-karya/konfigurasi';
-import { dbAdmin } from './db';
+import { BATAS, KATEGORI_KARYA } from '../../kirim-karya/konfigurasi';
+import { dbAdmin, dbTulis } from './db';
 import { KOLOM, ambilHalaman, keKaryaAdmin, type Baris } from './kueri';
-import { adalahStatus, type KaryaAdmin, type KaryaEdit, type MasukanEdit } from './tipe';
+import { buatSlug } from './slug';
+import { adalahStatus, type KaryaAdmin, type KaryaEdit, type MasukanEdit, type MasukanTambah } from './tipe';
 
 export type HasilAksi = { ok: true } | { ok: false; pesan: string };
 
 const HALAMAN_ADMIN = '/dashboard/admin_karya';
 const TANPA_AKSES = 'Anda tidak punya akses.';
+const POLA_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Login dan sidebar sudah ditangani di tempat lain, jadi tidak ada pemeriksaan sesi di sini.
 // Catatan: server action tetap bisa dipanggil langsung lewat HTTP. Jika sistem login Anda
@@ -75,6 +77,83 @@ export async function ambilKarya(
       foto_url: data.foto_url ?? '',
     },
   };
+}
+
+// Petugas menambah karya baru. Berbeda dengan form publik, karya langsung berstatus approved
+// sehingga tayang di galeri tanpa antrean peninjauan.
+export async function tambahKarya(
+  masukan: MasukanTambah
+): Promise<{ ok: true; item: KaryaAdmin } | { ok: false; pesan: string }> {
+  if (!(await pastikanPetugas())) return { ok: false, pesan: TANPA_AKSES };
+
+  const anggotaId = String(masukan.anggota_id ?? '').trim();
+  const judul = String(masukan.judul ?? '').replace(/\s+/g, ' ').trim();
+  const kategori = String(masukan.kategori ?? '').trim();
+  const penulis = String(masukan.penulis ?? '').replace(/\s+/g, ' ').trim();
+  const isi = String(masukan.isi ?? '').replace(/\r\n?/g, '\n').trim();
+  const fotoUrl = String(masukan.foto_url ?? '').trim();
+
+  if (anggotaId && !POLA_UUID.test(anggotaId)) return { ok: false, pesan: 'Anggota tidak valid. Pilih ulang dari daftar.' };
+  if (!anggotaId && !penulis) return { ok: false, pesan: 'Pilih anggota perpustakaan atau isi nama penulis.' };
+  if (judul.length < 3) return { ok: false, pesan: 'Judul minimal 3 karakter.' };
+  if (judul.length > BATAS.judulMaks) return { ok: false, pesan: `Judul maksimal ${BATAS.judulMaks} karakter.` };
+  if (!(KATEGORI_KARYA as readonly string[]).includes(kategori)) return { ok: false, pesan: 'Pilih salah satu kategori.' };
+  if (penulis.length > BATAS.penulisMaks) return { ok: false, pesan: `Nama penulis maksimal ${BATAS.penulisMaks} karakter.` };
+  if (!isi) return { ok: false, pesan: 'Isi karya tidak boleh kosong.' };
+  if (isi.length > BATAS.isiMaks) return { ok: false, pesan: `Isi karya maksimal ${BATAS.isiMaks.toLocaleString('id-ID')} karakter.` };
+  if (fotoUrl && (fotoUrl.length > 2000 || !urlGambarValid(fotoUrl))) {
+    return { ok: false, pesan: 'URL gambar tidak valid. Gunakan alamat yang diawali http:// atau https://.' };
+  }
+
+  const db = dbTulis();
+
+  // Jika anggota dipilih, pastikan benar-benar ada. Namanya jadi cadangan bila penulis dikosongkan.
+  let namaAnggota: string | null = null;
+  if (anggotaId) {
+    const { data: anggota, error: errAnggota } = await db
+      .from('anggota')
+      .select('id, nama')
+      .eq('id', anggotaId)
+      .maybeSingle();
+
+    if (errAnggota) {
+      console.error('Gagal memverifikasi anggota:', errAnggota);
+      return { ok: false, pesan: 'Verifikasi anggota gagal. Coba lagi.' };
+    }
+    if (!anggota) return { ok: false, pesan: 'Anggota tidak ditemukan. Cari dan pilih ulang.' };
+    namaAnggota = anggota.nama ?? null;
+  }
+
+  // nis, organisasi, status_anggota, dan nama_anggota diisi otomatis oleh Supabase dari tabel anggota
+  // (seperti di form publik), jadi tidak dikirim dari sini.
+  const { data, error } = await db
+    .from('karya')
+    .insert({
+      anggota_id: anggotaId || null,
+      kategori,
+      judul,
+      isi,
+      penulis: penulis || namaAnggota,
+      foto_url: fotoUrl || null,
+      slug: buatSlug(judul),
+      status: 'approved',
+      dibuat_pada: new Date().toISOString(),
+    })
+    .select(KOLOM)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Gagal menambah karya:', error);
+    return {
+      ok: false,
+      pesan: 'Karya gagal ditambahkan. Pastikan izin insert dengan status approved sudah diberikan di Supabase.',
+    };
+  }
+  if (!data) return { ok: false, pesan: 'Karya tersimpan, tetapi gagal dibaca kembali. Muat ulang halaman.' };
+
+  const baris = data as unknown as Baris;
+  bersihkanCache(baris.slug);
+  return { ok: true, item: keKaryaAdmin(baris) };
 }
 
 export async function simpanKarya(
