@@ -113,7 +113,7 @@ export default function PilihAnggota({
 
   if (terpilih) {
     return (
-      <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5">
+      <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-blue-600">
           <UserRound className="h-4 w-4" aria-hidden="true" />
         </span>
@@ -162,7 +162,7 @@ export default function PilihAnggota({
         }}
         onFocus={() => setTerbuka(true)}
         onKeyDown={tombol}
-        className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 aria-[invalid=true]:border-red-400 aria-[invalid=true]:focus:ring-red-400"
+        className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-10 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 aria-[invalid=true]:border-red-400 aria-[invalid=true]:focus:ring-red-400"
       />
       {memuat && (
         <Loader2
@@ -178,7 +178,7 @@ export default function PilihAnggota({
           aria-label="Hasil pencarian anggota"
           // Menjaga fokus tetap di kolom input saat daftar disentuh atau diklik
           onMouseDown={(e) => e.preventDefault()}
-          className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto overscroll-contain rounded-xl border border-slate-300 bg-white py-1"
+          className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto overscroll-contain rounded-xl border border-slate-300 bg-white py-1"
         >
           {!cukupPanjang ? (
             <p className="px-4 py-3 text-sm text-slate-500">Ketik minimal {KUERI_MIN} huruf nama atau NIS.</p>

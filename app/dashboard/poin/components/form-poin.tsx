@@ -1,69 +1,80 @@
 'use client';
 
-import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, Loader2, Send } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Loader2, Send } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import PilihAnggota, { type AnggotaPilihan } from './pilih-anggota';
-
-const POIN_MAKS = 10000;
-const KETERANGAN_MAKS = 200;
-
-const kelasInput =
-  'w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 aria-[invalid=true]:border-red-400 aria-[invalid=true]:focus:ring-red-400';
-
-const tombolUtama =
-  'inline-flex cursor-pointer touch-manipulation select-none items-center justify-center gap-2 rounded-lg border border-blue-800 bg-blue-600 px-7 py-3 text-sm font-semibold text-white shadow-[0_4px_0_0_#1e40af] transition-[transform,box-shadow] duration-75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-70 [@media(hover:hover)]:hover:translate-y-1 [@media(hover:hover)]:hover:shadow-none active:translate-y-1 active:shadow-none';
+import RiwayatPoin from './riwayat-poin';
+import DuaKolom from './dua-kolom';
+import type { KategoriPoin } from './kelola-kategori';
+import { Bidang, KETERANGAN_MAKS, KotakPesan, POIN_MAKS, kelasInput, tombolUtama, type Pesan } from './ui';
 
 type Jenis = 'tambah' | 'kurangi';
 type NamaField = 'anggota' | 'jumlah' | 'keterangan';
-type Pesan = { tipe: 'sukses' | 'gagal'; teks: string } | null;
 
-function Bidang({
-  id,
-  label,
-  bantuan,
-  galat,
-  children,
-}: {
-  id: string;
-  label: string;
-  bantuan?: string;
-  galat?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-semibold text-slate-900">
-        {label}
-      </label>
-      {children}
-      {bantuan && !galat && (
-        <p id={`${id}-bantuan`} className="mt-1.5 text-xs text-slate-500">
-          {bantuan}
-        </p>
-      )}
-      {galat && (
-        <p id={`${id}-galat`} className="mt-1.5 text-xs font-medium text-red-600">
-          {galat}
-        </p>
-      )}
-    </div>
-  );
-}
-
-export default function FormPoin() {
+export default function FormPoin({ versiKategori = 0 }: { versiKategori?: number }) {
   const [anggota, setAnggota] = useState<AnggotaPilihan | null>(null);
   const [jenis, setJenis] = useState<Jenis>('tambah');
+  const [kategori, setKategori] = useState<KategoriPoin[]>([]);
+  const [kategoriId, setKategoriId] = useState('');
+  const [gagalKategori, setGagalKategori] = useState(false);
   const [jumlah, setJumlah] = useState('');
   const [keterangan, setKeterangan] = useState('');
   const [mengirim, setMengirim] = useState(false);
   const [galat, setGalat] = useState<Partial<Record<NamaField, string>>>({});
   const [pesan, setPesan] = useState<Pesan>(null);
+  const [versiRiwayat, setVersiRiwayat] = useState(0);
+
+  // Muat daftar kategori; dimuat ulang setiap kali kategori diubah di tab Kategori poin
+  useEffect(() => {
+    let batal = false;
+    supabase
+      .from('kategori_poin')
+      .select('id, nama, keterangan, created_at')
+      .order('nama', { ascending: true })
+      .then(({ data, error }) => {
+        if (batal) return;
+        if (error) {
+          console.error('Gagal memuat kategori poin:', error);
+          setGagalKategori(true);
+          return;
+        }
+        const baru = (data ?? []) as KategoriPoin[];
+        setGagalKategori(false);
+        setKategori(baru);
+        setKategoriId((lama) => (baru.some((k) => String(k.id) === lama) ? lama : ''));
+      });
+    return () => {
+      batal = true;
+    };
+  }, [versiKategori]);
+
+  const kategoriTerpilih = kategori.find((k) => String(k.id) === kategoriId);
+  const bantuanKategori = gagalKategori
+    ? 'Daftar kategori gagal dimuat. Muat ulang halaman untuk mencoba lagi.'
+    : kategoriTerpilih?.keterangan || 'Opsional. Kelola daftar kategori di tab Kategori poin.';
 
   const lampirAria = (id: string, ada?: string) => ({
     'aria-invalid': ada ? true : undefined,
     'aria-describedby': ada ? `${id}-galat` : `${id}-bantuan`,
   });
+
+  function ubahAnggota(a: AnggotaPilihan | null) {
+    setAnggota(a);
+    setPesan(null);
+  }
+
+  // Ambil ulang data anggota (terutama total poin) untuk kartu anggota
+  async function segarkanAnggota(id: string) {
+    const { data: segar } = await supabase
+      .from('anggota')
+      .select('id, nama, nis, jenjang, organisasi, total_poin')
+      .eq('id', id)
+      .maybeSingle();
+    if (segar) {
+      setAnggota((sekarang) => (sekarang && sekarang.id === segar.id ? (segar as AnggotaPilihan) : sekarang));
+    }
+  }
 
   async function kirim(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -92,6 +103,7 @@ export default function FormPoin() {
       anggota_id: anggota.id,
       poin,
       keterangan: ket || null,
+      kategori_id: kategoriId ? Number(kategoriId) : null,
     });
 
     setMengirim(false);
@@ -106,123 +118,148 @@ export default function FormPoin() {
       tipe: 'sukses',
       teks: `${poin > 0 ? '+' : ''}${poin.toLocaleString('id-ID')} poin tercatat untuk ${anggota.nama}.`,
     });
-    setAnggota(null);
+    // Anggota tetap terpilih supaya hasilnya langsung terlihat di riwayat
     setJumlah('');
     setKeterangan('');
+    setKategoriId('');
     setJenis('tambah');
+    setVersiRiwayat((v) => v + 1);
+
+    await segarkanAnggota(anggota.id);
   }
 
   return (
-    <form onSubmit={kirim} noValidate className="space-y-6 rounded-3xl border border-blue-100 bg-white p-5 sm:p-8">
-      <div aria-live="polite">
-        {pesan && (
-          <div
-            role={pesan.tipe === 'gagal' ? 'alert' : 'status'}
-            className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${
-              pesan.tipe === 'sukses'
-                ? 'border-green-100 bg-green-50 text-green-800'
-                : 'border-red-100 bg-red-50 text-red-700'
-            }`}
-          >
-            {pesan.tipe === 'sukses' ? (
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            ) : (
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-            )}
-            <p>{pesan.teks}</p>
+    <DuaKolom>
+      <form
+        onSubmit={kirim}
+        noValidate
+        className="space-y-4 rounded-2xl border border-blue-100 bg-white p-4 sm:p-5 lg:overflow-y-auto"
+      >
+        <KotakPesan pesan={pesan} />
+
+        <Bidang
+          id="anggota-cari"
+          label="Anggota"
+          bantuan="Cari dengan nama atau NIS, lalu pilih dari daftar."
+          galat={galat.anggota}
+        >
+          <PilihAnggota id="anggota-cari" terpilih={anggota} onUbah={ubahAnggota} galat={galat.anggota} />
+        </Bidang>
+
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-semibold text-slate-900">Jenis mutasi</legend>
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                { nilai: 'tambah', label: 'Tambah poin' },
+                { nilai: 'kurangi', label: 'Kurangi poin' },
+              ] as const
+            ).map((j) => (
+              <div key={j.nilai} className="relative">
+                <input
+                  id={`jenis-${j.nilai}`}
+                  type="radio"
+                  name="jenis"
+                  value={j.nilai}
+                  checked={jenis === j.nilai}
+                  onChange={() => setJenis(j.nilai)}
+                  className="peer sr-only"
+                />
+                <label
+                  htmlFor={`jenis-${j.nilai}`}
+                  className="block cursor-pointer rounded-xl border border-slate-200 bg-white px-4 py-2 text-center text-sm font-semibold text-slate-900 transition-colors hover:border-blue-300 peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500"
+                >
+                  {j.label}
+                </label>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        </fieldset>
 
-      <Bidang
-        id="anggota-cari"
-        label="Anggota"
-        bantuan="Cari dengan nama atau NIS, lalu pilih dari daftar."
-        galat={galat.anggota}
-      >
-        <PilihAnggota id="anggota-cari" terpilih={anggota} onUbah={setAnggota} galat={galat.anggota} />
-      </Bidang>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Bidang id="jumlah" label="Jumlah poin" bantuan="Bilangan bulat positif." galat={galat.jumlah}>
+            <input
+              id="jumlah"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={jumlah}
+              onChange={(e) => setJumlah(e.target.value.replace(/\D/g, '').slice(0, 5))}
+              className={`${kelasInput} h-10 tabular-nums`}
+              {...lampirAria('jumlah', galat.jumlah)}
+            />
+          </Bidang>
 
-      <fieldset>
-        <legend className="mb-2 text-sm font-semibold text-slate-900">Jenis mutasi</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {(
-            [
-              { nilai: 'tambah', label: 'Tambah poin', ket: 'Poin anggota bertambah' },
-              { nilai: 'kurangi', label: 'Kurangi poin', ket: 'Poin anggota berkurang' },
-            ] as const
-          ).map((j) => (
-            <div key={j.nilai} className="relative">
-              <input
-                id={`jenis-${j.nilai}`}
-                type="radio"
-                name="jenis"
-                value={j.nilai}
-                checked={jenis === j.nilai}
-                onChange={() => setJenis(j.nilai)}
-                className="peer sr-only"
-              />
-              <label
-                htmlFor={`jenis-${j.nilai}`}
-                className="block cursor-pointer rounded-xl border border-slate-200 bg-white px-4 py-3 transition-colors hover:border-blue-300 peer-checked:border-blue-500 peer-checked:bg-blue-50 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500"
-              >
-                <span className="block text-sm font-semibold text-slate-900">{j.label}</span>
-                <span className="mt-0.5 block text-xs text-slate-500">{j.ket}</span>
-              </label>
-            </div>
-          ))}
+          <Bidang id="kategori" label="Kategori" bantuan={bantuanKategori}>
+            <select
+              id="kategori"
+              value={kategoriId}
+              onChange={(e) => setKategoriId(e.target.value)}
+              className={`${kelasInput} h-10`}
+              aria-describedby="kategori-bantuan"
+            >
+              <option value="">Tanpa kategori</option>
+              {kategori.map((k) => (
+                <option key={k.id} value={String(k.id)}>
+                  {k.nama}
+                </option>
+              ))}
+            </select>
+          </Bidang>
         </div>
-      </fieldset>
 
-      <Bidang id="jumlah" label="Jumlah poin" bantuan="Bilangan bulat positif." galat={galat.jumlah}>
-        <input
-          id="jumlah"
-          type="text"
-          inputMode="numeric"
-          autoComplete="off"
-          value={jumlah}
-          onChange={(e) => setJumlah(e.target.value.replace(/\D/g, '').slice(0, 5))}
-          className={`${kelasInput} h-11 tabular-nums`}
-          {...lampirAria('jumlah', galat.jumlah)}
-        />
-      </Bidang>
-
-      <Bidang
-        id="keterangan"
-        label="Keterangan"
-        bantuan="Alasan pemberian atau pengurangan poin (opsional)."
-        galat={galat.keterangan}
-      >
-        <textarea
+        <Bidang
           id="keterangan"
-          rows={3}
-          maxLength={KETERANGAN_MAKS}
-          lang="id"
-          value={keterangan}
-          onChange={(e) => setKeterangan(e.target.value)}
-          className={`${kelasInput} resize-y py-3 leading-6`}
-          {...lampirAria('keterangan', galat.keterangan)}
-        />
-        <p className="mt-1.5 text-right text-xs tabular-nums text-slate-500" aria-hidden="true">
-          {keterangan.length}/{KETERANGAN_MAKS}
-        </p>
-      </Bidang>
+          label="Keterangan"
+          bantuan="Alasan pemberian atau pengurangan poin (opsional)."
+          galat={galat.keterangan}
+        >
+          <textarea
+            id="keterangan"
+            rows={2}
+            maxLength={KETERANGAN_MAKS}
+            lang="id"
+            value={keterangan}
+            onChange={(e) => setKeterangan(e.target.value)}
+            className={`${kelasInput} resize-none py-2 leading-6`}
+            {...lampirAria('keterangan', galat.keterangan)}
+          />
+          <p className="mt-1 text-right text-xs tabular-nums text-slate-500" aria-hidden="true">
+            {keterangan.length}/{KETERANGAN_MAKS}
+          </p>
+        </Bidang>
 
-      <div className="flex justify-end border-t border-blue-100 pt-6">
-        <button type="submit" disabled={mengirim} className={`${tombolUtama} w-full sm:w-auto`}>
-          {mengirim ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Menyimpan
-            </>
-          ) : (
-            <>
-              <Send className="h-4 w-4" aria-hidden="true" />
-              Simpan poin
-            </>
-          )}
-        </button>
-      </div>
-    </form>
+        <div className="flex justify-end">
+          <button type="submit" disabled={mengirim} className={`${tombolUtama} w-full sm:w-auto`}>
+            {mengirim ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Menyimpan
+              </>
+            ) : (
+              <>
+                <Send className="h-4 w-4" aria-hidden="true" />
+                Simpan poin
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+
+      {/* Di luar <form> supaya Enter di kolom pencarian tidak mengirim form */}
+      {anggota ? (
+        <RiwayatPoin
+          key={anggota.id}
+          anggotaId={anggota.id}
+          kategori={kategori}
+          versi={versiRiwayat}
+          onDiubah={() => segarkanAnggota(anggota.id)}
+        />
+      ) : (
+        <div className="hidden items-center justify-center rounded-2xl border border-dashed border-slate-500 p-6 text-center text-sm text-slate-300 lg:flex">
+          Pilih anggota untuk melihat riwayat poinnya di sini.
+        </div>
+      )}
+    </DuaKolom>
   );
 }
