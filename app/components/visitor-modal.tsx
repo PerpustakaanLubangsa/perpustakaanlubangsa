@@ -545,6 +545,7 @@ function VisitorFormContent({ onSuccess, onClose }: VisitorFormContentProps) {
       const { error: insertError } = await supabase.from('data_pengunjung').insert([
         {
           id_anggota: selectedAnggota.id,
+          id_buku: selectedBuku.id,
           nis: selectedAnggota.nis,
           nama: nama.trim(),
           kamar: kamar.trim(),

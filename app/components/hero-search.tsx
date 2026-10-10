@@ -419,10 +419,11 @@ const SearchBox = memo(function SearchBox({
 
   return (
     <div ref={containerRef} className="relative">
+      {/* Kotak pencarian: persegi sudut bulat (bukan pil) */}
       <form
         onSubmit={handleSubmit}
         role="search"
-        className="bg-white border border-blue-100 rounded-2xl sm:rounded-3xl p-2 shadow-lg shadow-blue-900/5 transition-colors focus-within:border-blue-300"
+        className="bg-white border border-blue-100 rounded-2xl p-2 shadow-lg shadow-blue-900/5 transition-colors focus-within:border-blue-300"
       >
         <div className="relative flex w-full items-center">
           <input
@@ -446,13 +447,22 @@ const SearchBox = memo(function SearchBox({
             onFocus={() => setIsOpen(true)}
             onKeyDown={handleKeyDown}
             placeholder="Cari judul, penulis, atau topik..."
-            className="w-full min-w-0 h-11 sm:h-12 pl-5 pr-28 sm:pr-32 bg-blue-50 border-none text-slate-900 placeholder-slate-500 font-medium tracking-tight text-sm rounded-xl sm:rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
+            className="w-full min-w-0 h-12 sm:h-14 pl-5 pr-32 sm:pr-36 bg-blue-50 border-none text-slate-900 placeholder-slate-500 font-medium tracking-tight text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
           />
 
+          {/* Tombol Cari: persegi sudut bulat, timbul, efek ditekan saat hover/sentuh/klik */}
           <button
             type="submit"
             disabled={isSearching}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex h-8 sm:h-9 items-center justify-center gap-1.5 rounded-lg sm:rounded-full bg-blue-600 px-3.5 sm:px-4 text-xs sm:text-sm font-semibold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-80 cursor-pointer"
+            className="absolute right-1.5 top-0 bottom-0 my-auto inline-flex h-9 sm:h-10 items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 sm:px-5 text-xs sm:text-sm font-semibold text-white
+              border-t border-blue-400/60
+              shadow-[0_4px_0_0_#1e40af]
+              transition-[transform,box-shadow,background-color] duration-100 ease-out
+              select-none touch-manipulation cursor-pointer
+              [@media(hover:hover)]:hover:translate-y-[2px] [@media(hover:hover)]:hover:bg-blue-700 [@media(hover:hover)]:hover:shadow-[0_2px_0_0_#1e40af]
+              active:translate-y-[4px] active:bg-blue-700 active:shadow-[0_0_0_0_#1e40af]
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2
+              disabled:cursor-not-allowed disabled:opacity-80"
           >
             {isSearching ? (
               <>

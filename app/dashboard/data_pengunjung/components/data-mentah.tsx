@@ -1,20 +1,21 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
 import {
   bangunMentah,
+  rentang,
   tanggalIndo,
   tombolSekunder,
-  type FilterDim,
+  tombolUtama,
+  type Lokasi,
   type Pengunjung,
-  type Waktu,
 } from '../konfigurasi';
+import { MAKS_EKSPOR, eksporMentah } from '../ekspor';
 
 const UKURAN = [25, 50, 100] as const;
 
-// Dipasang dengan `key` yang berubah saat filter berubah, jadi halaman otomatis kembali ke 1
-export default function DataMentah({ waktu, fDim }: { waktu: Waktu; fDim: FilterDim }) {
+export default function DataMentah({ lokasi }: { lokasi: Lokasi }) {
   const [halaman, setHalaman] = useState(1);
   const [ukuran, setUkuran] = useState<number>(25);
   const [baris, setBaris] = useState<Pengunjung[]>([]);
@@ -22,6 +23,9 @@ export default function DataMentah({ waktu, fDim }: { waktu: Waktu; fDim: Filter
   const [memuat, setMemuat] = useState(true);
   const [pernahMuat, setPernahMuat] = useState(false);
   const [galat, setGalat] = useState(false);
+  const [mengekspor, setMengekspor] = useState(false);
+  const [progres, setProgres] = useState(0);
+  const [galatEkspor, setGalatEkspor] = useState('');
   const permintaan = useRef(0);
 
   const totalHalaman = Math.max(1, Math.ceil(total / ukuran));
@@ -33,8 +37,9 @@ export default function DataMentah({ waktu, fDim }: { waktu: Waktu; fDim: Filter
     setMemuat(true);
     setGalat(false);
     (async () => {
-      const dari = (halaman - 1) * ukuran;
-      const { data, error, count } = await bangunMentah(waktu, fDim, true).range(dari, dari + ukuran - 1);
+      const { dari, sampai } = rentang(lokasi);
+      const mulai = (halaman - 1) * ukuran;
+      const { data, error, count } = await bangunMentah(dari, sampai, true).range(mulai, mulai + ukuran - 1);
       if (id !== permintaan.current) return; // abaikan respons lama
       if (error) {
         console.error('Gagal memuat data mentah:', error);
@@ -48,10 +53,50 @@ export default function DataMentah({ waktu, fDim }: { waktu: Waktu; fDim: Filter
       setMemuat(false);
       setPernahMuat(true);
     })();
-  }, [waktu, fDim, halaman, ukuran]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lokasi.tahun, lokasi.bulan, lokasi.minggu, halaman, ukuran]);
+
+  async function ekspor() {
+    if (mengekspor) return;
+    setMengekspor(true);
+    setProgres(0);
+    setGalatEkspor('');
+    try {
+      await eksporMentah(lokasi, setProgres);
+    } catch (err) {
+      console.error('Gagal mengekspor data mentah:', err);
+      setGalatEkspor('Ekspor gagal. Coba lagi sebentar.');
+    } finally {
+      setMengekspor(false);
+    }
+  }
 
   return (
     <section aria-label="Data mentah" className="overflow-hidden rounded-3xl border border-blue-100 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-6">
+        <p className="text-sm text-slate-600">
+          <span className="font-semibold text-slate-900">{total.toLocaleString('id-ID')}</span> baris data mentah
+        </p>
+        <button type="button" onClick={ekspor} disabled={mengekspor || total === 0} className={tombolUtama}>
+          {mengekspor ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Mengekspor {progres.toLocaleString('id-ID')}
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Excel data mentah
+            </>
+          )}
+        </button>
+      </div>
+      {(galatEkspor || total > MAKS_EKSPOR) && (
+        <p className={`px-4 pt-3 text-xs sm:px-6 ${galatEkspor ? 'font-medium text-red-600' : 'text-slate-500'}`}>
+          {galatEkspor || `Ekspor dibatasi ${MAKS_EKSPOR.toLocaleString('id-ID')} baris teratas.`}
+        </p>
+      )}
+
       <div className={`overflow-x-auto transition-opacity ${memuat && pernahMuat ? 'opacity-60' : ''}`}>
         <table className="w-full min-w-[960px] text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -77,13 +122,13 @@ export default function DataMentah({ waktu, fDim }: { waktu: Waktu; fDim: Filter
             ) : galat ? (
               <tr>
                 <td colSpan={8} className="px-4 py-12 text-center text-sm text-red-600">
-                  Data mentah gagal dimuat. Coba ubah filter atau muat ulang halaman.
+                  Data mentah gagal dimuat. Coba muat ulang halaman.
                 </td>
               </tr>
             ) : baris.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-12 text-center text-sm text-slate-500">
-                  Tidak ada data yang cocok.
+                  Tidak ada data pada minggu ini.
                 </td>
               </tr>
             ) : (
@@ -104,7 +149,7 @@ export default function DataMentah({ waktu, fDim }: { waktu: Waktu; fDim: Filter
         </table>
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-t border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
           <span className="tabular-nums">
             {awal.toLocaleString('id-ID')}–{akhir.toLocaleString('id-ID')} dari {total.toLocaleString('id-ID')}

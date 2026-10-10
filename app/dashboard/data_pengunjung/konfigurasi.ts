@@ -1,17 +1,19 @@
 import { supabase } from '@/lib/supabase';
 
+export type Lokasi = { tahun: number | null; bulan: number | null; minggu: number | null };
+export type Tingkat = 'tahun' | 'bulan' | 'minggu' | 'hari';
 export type Butir = { k: string; n: number };
+export type TitikTren = { k: number; n: number };
+export type IsiFolder = { k: number; n: number; unik: number };
 
 export type Statistik = {
   ringkasan: { total: number; unik: number; hari_aktif: number };
-  tren: Butir[];
-  jenjang: Butir[];
-  kategori: Butir[];
+  tren: TitikTren[];
   aktivitas: Butir[];
-  kamar: Butir[];
-  buku: Butir[];
+  kategori: Butir[];
+  jenjang: Butir[];
   nama: Butir[];
-  minggu: Butir[];
+  buku: Butir[];
 };
 
 export type Pengunjung = {
@@ -28,30 +30,30 @@ export type Pengunjung = {
   nis: string | null;
 };
 
-export type DimKey = 'jenjang' | 'kategori' | 'aktivitas' | 'kamar' | 'buku' | 'nama';
-export type FilterDim = Partial<Record<DimKey, string>>;
-export type Waktu = { tahun: number | null; bulan: number | null; hari: number | null };
-export type Tingkat = 'tahun' | 'bulan' | 'hari';
+export type TitikWaktu = { k: string; label: string; n: number; aktif: boolean };
 
-export const TIDAK_DIISI = 'Tidak diisi';
-export const WAKTU_AWAL: Waktu = { tahun: null, bulan: null, hari: null };
+export type TabGrafik = 'waktu' | 'aktivitas' | 'kategori' | 'jenjang' | 'anggota' | 'buku';
 
-export const DIM: Record<DimKey, { label: string; kolom: string }> = {
-  jenjang: { label: 'Jenjang', kolom: 'jenjang' },
-  kategori: { label: 'Kategori', kolom: 'kategori' },
-  aktivitas: { label: 'Aktivitas', kolom: 'aktivitas' },
-  kamar: { label: 'Kamar', kolom: 'kamar' },
-  buku: { label: 'Buku', kolom: 'judul_buku' },
-  nama: { label: 'Pengunjung', kolom: 'nama' },
-};
+export const TAB_GRAFIK: { kunci: TabGrafik; label: string; judul: string }[] = [
+  { kunci: 'waktu', label: 'Grafik waktu', judul: 'Kunjungan menurut waktu' },
+  { kunci: 'aktivitas', label: 'Aktivitas', judul: 'Perbandingan aktivitas' },
+  { kunci: 'kategori', label: 'Kategori', judul: 'Perbandingan kategori' },
+  { kunci: 'jenjang', label: 'Jenjang', judul: 'Perbandingan jenjang' },
+  { kunci: 'anggota', label: 'Anggota terbanyak', judul: 'Anggota paling sering berkunjung' },
+  { kunci: 'buku', label: 'Buku populer', judul: 'Buku paling populer' },
+];
+
+export type SpesifikasiGrafik =
+  | { jenis: 'waktu'; data: TitikWaktu[] }
+  | { jenis: 'donut' | 'batang'; data: Butir[]; total: number };
+
+export const LOKASI_AWAL: Lokasi = { tahun: null, bulan: null, minggu: null };
 
 export const NAMA_BULAN = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
 ];
 export const BULAN_SINGKAT = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-export const NAMA_HARI = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-export const HARI_SINGKAT = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'];
 
 export const KOLOM_MENTAH_LIST: { kunci: keyof Pengunjung; judul: string }[] = [
   { kunci: 'tanggal_kunjungan', judul: 'Tanggal Kunjungan' },
@@ -69,46 +71,82 @@ const KOLOM_MENTAH =
 
 const dua = (n: number) => String(n).padStart(2, '0');
 
-// Rentang tanggal dari pilihan waktu. `termasukHari` false = rentang induk (untuk grafik tren).
-export function rentang(w: Waktu, termasukHari: boolean): { dari: string | null; sampai: string | null } {
-  if (!w.tahun) return { dari: null, sampai: null };
-  if (!w.bulan) return { dari: `${w.tahun}-01-01`, sampai: `${w.tahun}-12-31` };
-  if (w.hari && termasukHari) {
-    const t = `${w.tahun}-${dua(w.bulan)}-${dua(w.hari)}`;
-    return { dari: t, sampai: t };
-  }
-  const akhir = new Date(w.tahun, w.bulan, 0).getDate();
-  return { dari: `${w.tahun}-${dua(w.bulan)}-01`, sampai: `${w.tahun}-${dua(w.bulan)}-${dua(akhir)}` };
+// Minggu = blok 7 hari: 1–7, 8–14, 15–21, 22–28, 29–akhir bulan
+export function rentang(l: Lokasi): { dari: string | null; sampai: string | null } {
+  if (!l.tahun) return { dari: null, sampai: null };
+  if (!l.bulan) return { dari: `${l.tahun}-01-01`, sampai: `${l.tahun}-12-31` };
+  const akhir = new Date(l.tahun, l.bulan, 0).getDate();
+  const b = dua(l.bulan);
+  if (!l.minggu) return { dari: `${l.tahun}-${b}-01`, sampai: `${l.tahun}-${b}-${dua(akhir)}` };
+  const awal = (l.minggu - 1) * 7 + 1;
+  const tutup = l.minggu >= 5 ? akhir : l.minggu * 7;
+  return { dari: `${l.tahun}-${b}-${dua(awal)}`, sampai: `${l.tahun}-${b}-${dua(tutup)}` };
 }
 
-export function tanggalHari(w: Waktu): string | null {
-  return w.tahun && w.bulan && w.hari ? `${w.tahun}-${dua(w.bulan)}-${dua(w.hari)}` : null;
-}
-
-export function tingkatTren(w: Waktu): Tingkat {
-  if (!w.tahun) return 'tahun';
-  if (!w.bulan) return 'bulan';
+// Tingkat sumbu grafik waktu = tingkat folder di bawahnya
+export function tingkatTren(l: Lokasi): Tingkat {
+  if (!l.tahun) return 'tahun';
+  if (!l.bulan) return 'bulan';
+  if (!l.minggu) return 'minggu';
   return 'hari';
 }
 
-export function deskripsiWaktu(w: Waktu) {
-  if (!w.tahun) return 'Semua waktu';
-  if (!w.bulan) return String(w.tahun);
-  if (!w.hari) return `${NAMA_BULAN[w.bulan - 1]} ${w.tahun}`;
-  return `${w.hari} ${NAMA_BULAN[w.bulan - 1]} ${w.tahun}`;
+export const samaLokasi = (a: Lokasi, b: Lokasi) =>
+  a.tahun === b.tahun && a.bulan === b.bulan && a.minggu === b.minggu;
+
+export function namaLokasi(l: Lokasi) {
+  if (!l.tahun) return 'Semua tahun';
+  if (!l.bulan) return `Tahun ${l.tahun}`;
+  if (!l.minggu) return `${NAMA_BULAN[l.bulan - 1]} ${l.tahun}`;
+  return `Minggu ${l.minggu}, ${NAMA_BULAN[l.bulan - 1]} ${l.tahun}`;
 }
 
-export function deskripsiDim(f: FilterDim) {
-  const bagian = (Object.keys(DIM) as DimKey[]).filter((d) => f[d]).map((d) => `${DIM[d].label}: ${f[d]}`);
-  return bagian.length ? bagian.join('; ') : '—';
+export function gabungLainnya(data: Butir[], maks = 6): Butir[] {
+  if (data.length <= maks) return data;
+  const sisa = data.slice(maks).reduce((a, b) => a + b.n, 0);
+  return [...data.slice(0, maks), { k: 'Lainnya', n: sisa }];
 }
 
-// k berbentuk 'YYYY-MM-DD' (awal tahun/bulan/hari)
-export function labelTren(k: string, t: Tingkat) {
-  const [y, m, d] = k.split('-').map(Number);
-  if (t === 'tahun') return String(y);
-  if (t === 'bulan') return `${BULAN_SINGKAT[m - 1]} ${y}`;
-  return `${d} ${BULAN_SINGKAT[m - 1]} ${y}`;
+// Lengkapi periode yang kosong supaya sumbu waktu selalu utuh
+export function lengkapiTren(tren: TitikTren[], l: Lokasi): TitikWaktu[] {
+  const t = tingkatTren(l);
+  const peta = new Map(tren.map((b) => [b.k, b.n]));
+  const titik = (k: number, label: string): TitikWaktu => ({ k: String(k), label, n: peta.get(k) ?? 0, aktif: false });
+
+  if (t === 'tahun') {
+    const kunci = tren.map((b) => b.k);
+    if (kunci.length === 0) return [];
+    const awal = Math.min(...kunci);
+    const akhir = Math.max(...kunci);
+    return Array.from({ length: akhir - awal + 1 }, (_, i) => titik(awal + i, String(awal + i)));
+  }
+  if (t === 'bulan') return BULAN_SINGKAT.map((b, i) => titik(i + 1, b));
+  if (t === 'minggu') return [1, 2, 3, 4, 5].map((m) => titik(m, `M${m}`));
+
+  const { dari, sampai } = rentang(l);
+  const awal = Number((dari ?? '').slice(8));
+  const akhir = Number((sampai ?? '').slice(8));
+  return Array.from({ length: Math.max(0, akhir - awal + 1) }, (_, i) => titik(awal + i, String(awal + i)));
+}
+
+const jumlah = (d: Butir[]) => d.reduce((a, b) => a + b.n, 0);
+
+// Satu bentuk data untuk layar, gambar PNG, dan Excel
+export function spesifikasi(s: Statistik, tab: TabGrafik, l: Lokasi): SpesifikasiGrafik {
+  switch (tab) {
+    case 'waktu':
+      return { jenis: 'waktu', data: lengkapiTren(s.tren, l) };
+    case 'aktivitas':
+      return { jenis: 'donut', data: gabungLainnya(s.aktivitas), total: jumlah(s.aktivitas) };
+    case 'jenjang':
+      return { jenis: 'donut', data: gabungLainnya(s.jenjang), total: jumlah(s.jenjang) };
+    case 'kategori':
+      return { jenis: 'batang', data: s.kategori, total: jumlah(s.kategori) };
+    case 'anggota':
+      return { jenis: 'batang', data: s.nama, total: s.ringkasan.total };
+    case 'buku':
+      return { jenis: 'batang', data: s.buku, total: s.ringkasan.total };
+  }
 }
 
 export const tanggalIndo = (t: string | null) => {
@@ -119,23 +157,13 @@ export const tanggalIndo = (t: string | null) => {
     : d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-// Query data mentah dengan filter yang sama persis dengan fungsi SQL statistik
-export function bangunMentah(w: Waktu, f: FilterDim, hitung: boolean) {
+export function bangunMentah(dari: string | null, sampai: string | null, hitung: boolean) {
   let k = supabase
     .from('data_pengunjung')
     .select(KOLOM_MENTAH, { count: hitung ? 'exact' : undefined })
     .not('tanggal_kunjungan', 'is', null);
-
-  const { dari, sampai } = rentang(w, true);
   if (dari) k = k.gte('tanggal_kunjungan', dari);
   if (sampai) k = k.lte('tanggal_kunjungan', sampai);
-
-  for (const d of Object.keys(DIM) as DimKey[]) {
-    const v = f[d];
-    if (!v) continue;
-    const kol = DIM[d].kolom;
-    k = v === TIDAK_DIISI ? k.or(`${kol}.is.null,${kol}.eq.`) : k.eq(kol, v);
-  }
 
   // `id` sebagai pembeda terakhir agar urutan antar halaman tidak melompat
   return k
