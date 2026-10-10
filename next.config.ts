@@ -5,6 +5,14 @@ const nextConfig: NextConfig = {
   // Dibutuhkan agar pembuatan PDF dan pengolahan gambar berjalan normal.
   serverExternalPackages: ["@react-pdf/renderer", "sharp"],
 
+  experimental: {
+    serverActions: {
+      // Dibutuhkan saat dikembangkan di GitHub Codespaces, karena proxy-nya membuat
+      // header Origin tidak sama dengan Host sehingga server action ditolak.
+      allowedOrigins: ["*.app.github.dev", "localhost:3000"],
+    },
+  },
+
   async headers() {
     return [
       {

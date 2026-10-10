@@ -3,7 +3,8 @@ import { supabase } from '@/lib/supabase';
 
 export interface KaryaTulisItem {
   id: string;
-  anggota_id: string;
+  // null untuk karya dari non-santri (tidak terhubung ke tabel anggota)
+  anggota_id: string | null;
   kategori: string;
   judul: string;
   isi: string;
@@ -28,8 +29,12 @@ export interface KaryaRingkas {
 export const SITE_NAME = 'Perpustakaan Lubangsa';
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
 
+// Kolom nis dan status sengaja tidak ikut dipilih: tidak dibutuhkan halaman publik
 const COLUMNS = 'id, anggota_id, kategori, judul, isi, dibuat_pada, foto_url, penulis, slug';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Hanya karya yang sudah disetujui petugas yang boleh tampil ke publik
+const STATUS_TAMPIL = 'approved';
 
 export const segmenKarya = (k: { slug: string | null; id: string }) => k.slug || k.id;
 
@@ -83,6 +88,7 @@ export const getKaryaList = cache(async () => {
     const { data, error } = await supabase
       .from('karya')
       .select(COLUMNS)
+      .eq('status', STATUS_TAMPIL)
       .order('dibuat_pada', { ascending: false });
     if (error) throw error;
     return { items: (data ?? []) as KaryaTulisItem[], gagal: false };
@@ -94,7 +100,7 @@ export const getKaryaList = cache(async () => {
 
 export const getKaryaBySegmen = cache(async (segmen: string) => {
   try {
-    const query = supabase.from('karya').select(COLUMNS);
+    const query = supabase.from('karya').select(COLUMNS).eq('status', STATUS_TAMPIL);
     const { data, error } = UUID_RE.test(segmen)
       ? await query.eq('id', segmen).maybeSingle()
       : await query.eq('slug', segmen).limit(1).maybeSingle();
@@ -111,6 +117,7 @@ export const getKaryaTerkait = cache(async (kategori: string, kecualiId: string)
     const { data, error } = await supabase
       .from('karya')
       .select(COLUMNS)
+      .eq('status', STATUS_TAMPIL)
       .eq('kategori', kategori)
       .neq('id', kecualiId)
       .order('dibuat_pada', { ascending: false })
@@ -129,7 +136,9 @@ export interface AnggotaIdentitas {
   kamar: string | null;
 }
 
-export const getAnggotaIdentitas = cache(async (id: string) => {
+export const getAnggotaIdentitas = cache(async (id: string | null) => {
+  // Karya dari non-santri tidak punya anggota_id, jadi tidak ada identitas tambahan
+  if (!id) return null;
   try {
     const { data, error } = await supabase
       .from('anggota')
