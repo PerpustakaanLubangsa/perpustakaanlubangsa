@@ -3,9 +3,11 @@
 import React, { useRef, useState } from 'react';
 import FormPoin from './form-poin';
 import KelolaKategori from './kelola-kategori';
+import AnggotaBermutasi from './anggota-bermutasi';
 
 const TAB = [
   { id: 'input', label: 'Input poin' },
+  { id: 'anggota', label: 'Anggota bermutasi' },
   { id: 'kategori', label: 'Kategori poin' },
 ] as const;
 
@@ -15,6 +17,10 @@ export default function PoinTambahan() {
   const [aktif, setAktif] = useState<IdTab>('input');
   // Naik setiap kali kategori berubah, supaya dropdown di form ikut diperbarui
   const [versiKategori, setVersiKategori] = useState(0);
+  // Naik saat mutasi berubah dari tab Input poin: daftar anggota bermutasi dimuat ulang saat tab dibuka
+  const [versiInput, setVersiInput] = useState(0);
+  // Naik saat mutasi diubah dari tab Anggota bermutasi: riwayat di tab Input poin dimuat ulang
+  const [versiAnggota, setVersiAnggota] = useState(0);
   const refTab = useRef<Record<string, HTMLButtonElement | null>>({});
 
   function tombol(e: React.KeyboardEvent<HTMLButtonElement>, i: number) {
@@ -61,9 +67,21 @@ export default function PoinTambahan() {
         </div>
       </div>
 
-      {/* Kedua panel tetap terpasang (hanya disembunyikan) agar isian form tidak hilang saat pindah tab */}
+      {/* Semua panel tetap terpasang (hanya disembunyikan) agar isian form dan pilihan anggota tidak hilang saat pindah tab */}
       <div role="tabpanel" id="panel-input" aria-labelledby="tab-input" hidden={aktif !== 'input'}>
-        <FormPoin versiKategori={versiKategori} />
+        <FormPoin
+          versiKategori={versiKategori}
+          versiLuar={versiAnggota}
+          onMutasiBerubah={() => setVersiInput((v) => v + 1)}
+        />
+      </div>
+      <div role="tabpanel" id="panel-anggota" aria-labelledby="tab-anggota" hidden={aktif !== 'anggota'}>
+        <AnggotaBermutasi
+          aktif={aktif === 'anggota'}
+          versiInput={versiInput}
+          versiKategori={versiKategori}
+          onMutasiBerubah={() => setVersiAnggota((v) => v + 1)}
+        />
       </div>
       <div role="tabpanel" id="panel-kategori" aria-labelledby="tab-kategori" hidden={aktif !== 'kategori'}>
         <KelolaKategori onBerubah={() => setVersiKategori((v) => v + 1)} />

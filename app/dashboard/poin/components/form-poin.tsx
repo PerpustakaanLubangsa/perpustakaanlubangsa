@@ -12,7 +12,17 @@ import { Bidang, KETERANGAN_MAKS, KotakPesan, POIN_MAKS, kelasInput, tombolUtama
 type Jenis = 'tambah' | 'kurangi';
 type NamaField = 'anggota' | 'jumlah' | 'keterangan';
 
-export default function FormPoin({ versiKategori = 0 }: { versiKategori?: number }) {
+export default function FormPoin({
+  versiKategori = 0,
+  versiLuar = 0,
+  onMutasiBerubah,
+}: {
+  versiKategori?: number;
+  /** Naik saat riwayat diubah dari tab lain, supaya riwayat di sini dimuat ulang. */
+  versiLuar?: number;
+  /** Dipanggil setiap kali mutasi disimpan atau diubah di sini. */
+  onMutasiBerubah?: () => void;
+}) {
   const [anggota, setAnggota] = useState<AnggotaPilihan | null>(null);
   const [jenis, setJenis] = useState<Jenis>('tambah');
   const [kategori, setKategori] = useState<KategoriPoin[]>([]);
@@ -124,6 +134,7 @@ export default function FormPoin({ versiKategori = 0 }: { versiKategori?: number
     setKategoriId('');
     setJenis('tambah');
     setVersiRiwayat((v) => v + 1);
+    onMutasiBerubah?.();
 
     await segarkanAnggota(anggota.id);
   }
@@ -252,8 +263,11 @@ export default function FormPoin({ versiKategori = 0 }: { versiKategori?: number
           key={anggota.id}
           anggotaId={anggota.id}
           kategori={kategori}
-          versi={versiRiwayat}
-          onDiubah={() => segarkanAnggota(anggota.id)}
+          versi={versiRiwayat + versiLuar}
+          onDiubah={() => {
+            segarkanAnggota(anggota.id);
+            onMutasiBerubah?.();
+          }}
         />
       ) : (
         <div className="hidden items-center justify-center rounded-2xl border border-dashed border-slate-500 p-6 text-center text-sm text-slate-300 lg:flex">

@@ -20,12 +20,16 @@ import { REVEAL_CSS, Reveal, RevealCtx } from './vp-reveal';
 import { useProfileData } from './vp-data';
 import Emblem from './vp-emblem';
 import { DonutBacaPinjam, KategoriChart } from './vp-charts';
-import { InfoItem, Kartu, StatItem, tombolBiru } from './vp-ui';
+import { InfoItem, Kartu, RankProgress, StatItem, tombolBiru } from './vp-ui';
 import RiwayatKunjungan from './vp-riwayat';
 import MutasiPoinBox from './vp-mutasi-poin';
 
 // Dipakai oleh page.tsx: import VisitorProfileModal, { ProfileTarget } from './components/VisitorProfileModal'
 export type { ProfileTarget };
+
+/* latar halaman: public/bg.png dilapisi overlay hitam (0 = tanpa overlay, 1 = hitam penuh) */
+const PAGE_OVERLAY = 0.65;
+const PAGE_BG = `linear-gradient(rgba(0,0,0,${PAGE_OVERLAY}), rgba(0,0,0,${PAGE_OVERLAY})), url('/bg.png')`;
 
 interface VisitorProfileModalProps {
     isOpen: boolean;
@@ -73,7 +77,14 @@ export default function VisitorProfileModal({ isOpen, target, onClose }: Visitor
     return (
         <div
             ref={scrollRef}
-            className="fixed inset-0 z-[60] overflow-y-auto bg-[#f7f8fa] text-slate-800"
+            className="fixed inset-0 z-[60] overflow-y-auto text-slate-100"
+            style={{
+                backgroundColor: '#02030a',
+                backgroundImage: PAGE_BG,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+            }}
             role="dialog"
             aria-modal="true"
             aria-label="Profil Pengunjung"
@@ -96,15 +107,15 @@ export default function VisitorProfileModal({ isOpen, target, onClose }: Visitor
                     {phase === 'loading' && (
                         <div
                             role="status"
-                            className="mt-32 flex flex-col items-center gap-3 text-sm font-medium text-slate-500"
+                            className="mt-32 flex flex-col items-center gap-3 text-sm font-medium text-slate-300"
                         >
-                            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                            <Loader2 className="h-8 w-8 animate-spin text-blue-400" />
                             Memuat profil...
                         </div>
                     )}
 
                     {phase === 'error' && (
-                        <div role="alert" className="mt-24 max-w-md text-center text-sm font-medium text-red-700">
+                        <div role="alert" className="mt-24 max-w-md text-center text-sm font-medium text-red-300">
                             {errorMsg}
                         </div>
                     )}
@@ -131,12 +142,12 @@ export default function VisitorProfileModal({ isOpen, target, onClose }: Visitor
                             {/* NAMA, NIS, RANK */}
                             <div className="mt-6 text-center">
                                 <Reveal variant="up" delay={0.05}>
-                                    <h2 className="text-3xl font-extrabold leading-tight text-slate-800 sm:text-4xl">
+                                    <h2 className="text-3xl font-extrabold leading-tight text-white sm:text-4xl">
                                         {nama}
                                     </h2>
                                 </Reveal>
                                 <Reveal variant="up" delay={0.1}>
-                                    <p className="mt-1.5 text-sm font-medium tracking-wide text-slate-500">
+                                    <p className="mt-1.5 text-sm font-medium tracking-wide text-slate-300">
                                         NIS {anggota.nis || '-'}
                                     </p>
                                 </Reveal>
@@ -144,7 +155,7 @@ export default function VisitorProfileModal({ isOpen, target, onClose }: Visitor
                                     <p
                                         className="mt-3 text-lg font-extrabold uppercase tracking-[0.3em] sm:text-xl"
                                         style={{
-                                            background: 'linear-gradient(90deg,#1d4ed8,#3b82f6,#06b6d4)',
+                                            background: 'linear-gradient(90deg,#60a5fa,#93c5fd,#22d3ee)',
                                             WebkitBackgroundClip: 'text',
                                             backgroundClip: 'text',
                                             color: 'transparent',
@@ -154,24 +165,27 @@ export default function VisitorProfileModal({ isOpen, target, onClose }: Visitor
                                     </p>
                                 </Reveal>
                                 <Reveal variant="fade" delay={0.2}>
-                                    <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold capitalize text-slate-400">
+                                    <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold capitalize text-slate-300">
                                         <ShieldCheck className="h-3.5 w-3.5" />
                                         {anggota.role}
                                     </p>
                                 </Reveal>
                             </div>
 
+                            {/* INDIKATOR POIN MENUJU RANK BERIKUTNYA */}
+                            <RankProgress poin={anggota.total_poin ?? 0} className="mt-8" />
+
                             {/* KUNJUNGAN KE-N */}
-                            <Reveal variant="up" delay={0.25} className="mt-8 max-w-xl">
-                                <p className="text-center text-sm leading-relaxed text-slate-600">
-                                    Terima kasih, <span className="font-bold text-slate-800">{anggota.nama}</span>!
+                            <Reveal variant="up" delay={0.25} className="mt-6 max-w-xl">
+                                <p className="text-center text-sm leading-relaxed text-slate-200">
+                                    Terima kasih, <span className="font-bold text-white">{anggota.nama}</span>!
                                     Kunjungan Anda tercatat sebagai kunjungan ke-
-                                    <span className="font-extrabold text-blue-600">{stats.totalKunjungan}</span>
+                                    <span className="font-extrabold text-blue-400">{stats.totalKunjungan}</span>
                                     {terbaru?.judul_buku ? (
                                         <>
                                             {' '}
                                             dengan {terbaru.aktivitas === 'Pinjam' ? 'meminjam' : 'membaca'}{' '}
-                                            <span className="font-bold text-slate-800">
+                                            <span className="font-bold text-white">
                                                 &ldquo;{terbaru.judul_buku}&rdquo;
                                             </span>
                                         </>

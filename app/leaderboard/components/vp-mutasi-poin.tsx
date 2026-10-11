@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Folder, FolderOpen, Loader2 } from 'lucide-react';
 import { formatWaktu, type KategoriPoin, type MutasiFolder, type MutasiPoinItem } from './vp-types';
 import { supabase } from './vp-data';
@@ -8,15 +8,17 @@ import { PER_HALAMAN, sanitizeQuery, useBertahap, useDebounced } from './vp-pagi
 import { BawahDaftar, Kartu, KotakCari, tombolPutih } from './vp-ui';
 
 const fmtPoin = (n: number) => `${n > 0 ? '+' : ''}${n.toLocaleString('id-ID')}`;
-const warnaPoin = (n: number) => (n >= 0 ? 'text-green-700' : 'text-red-600');
+const warnaPoin = (n: number) => (n >= 0 ? 'text-blue-600' : 'text-red-600');
 
 const KETERANGAN_TANPA = 'Mutasi poin yang tidak diberi kategori.';
 
 /**
  * Kartu mutasi poin bergaya folder.
- * - Awal: daftar folder kategori (yang punya mutasi) + "Tanpa kategori" bila ada.
+ * - Folder berasal dari tabel `kategori_poin` (BUKAN tabel kategori buku), semuanya tampil,
+ *   termasuk yang belum punya mutasi. "Tanpa kategori" hanya muncul bila ada mutasi tanpa kategori.
  * - Klik folder: isi kartu berganti menjadi mutasi kategori itu, dengan kartu keterangan kategori di paling atas.
  * - Pencarian: di tampilan folder mencari di dalam folder; di tampilan awal mencari ke semua mutasi.
+ * - Setiap mutasi berupa kartu padat; tinggi otomatis menyesuaikan panjang keterangan.
  */
 export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId: string; className?: string }) {
     const [folders, setFolders] = useState<MutasiFolder[]>([]);
@@ -28,14 +30,17 @@ export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId
     const [kueri, setKueri] = useState('');
     const q = useDebounced(sanitizeQuery(kueri));
 
-    /* ringkasan per kategori dari seluruh mutasi anggota (dibatasi server, umumnya 1000 baris) */
+    /* peta id -> kategori_poin, dipakai untuk menamai mutasi tanpa perlu join di server */
+    const petaKategori = useRef<Map<number, KategoriPoin>>(new Map());
+
+    /* daftar kategori_poin + ringkasan mutasi anggota ini per kategori */
     useEffect(() => {
         let batal = false;
         setMemuatFolder(true);
         setGalatFolder(false);
 
         Promise.all([
-            supabase.from('kategori_poin').select('id, nama, keterangan'),
+            supabase.from('kategori_poin').select('id, nama, keterangan').order('nama', { ascending: true }),
             supabase.from('mutasi_poin').select('poin, kategori_id').eq('anggota_id', anggotaId).limit(5000),
         ]).then(([katRes, mutRes]) => {
             if (batal) return;
@@ -45,30 +50,42 @@ export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId
                 setMemuatFolder(false);
                 return;
             }
-            if (katRes.error) console.error('Gagal memuat kategori poin:', katRes.error);
+            if (katRes.error) console.error('Gagal memuat tabel kategori_poin:', katRes.error);
 
+            const daftarKat = (katRes.data ?? []) as KategoriPoin[];
             const nama = new Map<number, KategoriPoin>();
-            ((katRes.data ?? []) as KategoriPoin[]).forEach((k) => nama.set(k.id, k));
+            daftarKat.forEach((k) => nama.set(k.id, k));
+            petaKategori.current = nama;
 
-            const peta = new Map<number | null, { jumlah: number; total: number }>();
+            /* ringkasan mutasi per kategori_id */
+            const ringkas = new Map<number | null, { jumlah: number; total: number }>();
             for (const r of (mutRes.data ?? []) as { poin: number; kategori_id: number | null }[]) {
-                const lama = peta.get(r.kategori_id) ?? { jumlah: 0, total: 0 };
-                peta.set(r.kategori_id, { jumlah: lama.jumlah + 1, total: lama.total + r.poin });
+                const lama = ringkas.get(r.kategori_id) ?? { jumlah: 0, total: 0 };
+                ringkas.set(r.kategori_id, { jumlah: lama.jumlah + 1, total: lama.total + r.poin });
             }
 
-            const daftar: MutasiFolder[] = [...peta.entries()].map(([id, r]) => {
-                const k = id === null ? undefined : nama.get(id);
-                return {
-                    id,
-                    nama: id === null ? 'Tanpa kategori' : (k?.nama ?? `Kategori #${id}`),
-                    keterangan: id === null ? KETERANGAN_TANPA : (k?.keterangan ?? null),
-                    ...r,
-                };
+            /* 1) semua kategori dari tabel kategori_poin (nilai 0 bila belum ada mutasi) */
+            const daftar: MutasiFolder[] = daftarKat.map((k) => {
+                const r = ringkas.get(k.id) ?? { jumlah: 0, total: 0 };
+                return { id: k.id, nama: k.nama, keterangan: k.keterangan ?? null, ...r };
             });
+
+            /* 2) kategori_id yang ada di mutasi tetapi tidak ditemukan di tabel (mis. terhapus) */
+            for (const [id, r] of ringkas.entries()) {
+                if (id === null || nama.has(id)) continue;
+                daftar.push({ id, nama: `Kategori #${id}`, keterangan: null, ...r });
+            }
+
+            /* 3) "Tanpa kategori" hanya bila memang ada */
+            const tanpa = ringkas.get(null);
+            if (tanpa) {
+                daftar.push({ id: null, nama: 'Tanpa kategori', keterangan: KETERANGAN_TANPA, ...tanpa });
+            }
+
             daftar.sort((a, b) => {
                 if (a.id === null) return 1;
                 if (b.id === null) return -1;
-                return a.nama.localeCompare(b.nama, 'id');
+                return b.jumlah - a.jumlah || a.nama.localeCompare(b.nama, 'id');
             });
 
             setFolders(daftar);
@@ -101,7 +118,7 @@ export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId
         async (dari: number) => {
             let query: any = supabase
                 .from('mutasi_poin')
-                .select('id, poin, keterangan, created_at, kategori:kategori_poin(id, nama)', {
+                .select('id, poin, keterangan, created_at, kategori_id', {
                     count: dari === 0 ? 'exact' : undefined,
                 })
                 .eq('anggota_id', anggotaId)
@@ -117,10 +134,21 @@ export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId
 
             const { data, error, count } = await query;
             if (error) throw error;
-            const rows = ((data ?? []) as any[]).map((r) => ({
-                ...r,
-                kategori: Array.isArray(r.kategori) ? (r.kategori[0] ?? null) : r.kategori,
-            })) as MutasiPoinItem[];
+
+            const rows = ((data ?? []) as any[]).map((r) => {
+                const k = r.kategori_id === null ? undefined : petaKategori.current.get(r.kategori_id);
+                return {
+                    id: r.id,
+                    poin: r.poin,
+                    keterangan: r.keterangan,
+                    created_at: r.created_at,
+                    kategori:
+                        r.kategori_id === null
+                            ? null
+                            : { id: r.kategori_id, nama: k?.nama ?? `Kategori #${r.kategori_id}` },
+                };
+            }) as MutasiPoinItem[];
+
             return { rows, total: (count as number | null) ?? null };
         },
         [anggotaId, idFolder, q, filterSemua]
@@ -177,53 +205,70 @@ export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId
                     ) : galatFolder ? (
                         <div className="space-y-3">
                             <p className="text-sm text-slate-500">Mutasi poin tidak dapat dimuat.</p>
-                            <button type="button" onClick={() => setUlang((n) => n + 1)} className={`${tombolPutih} px-4 py-2 text-xs`}>
+                            <button
+                                type="button"
+                                onClick={() => setUlang((n) => n + 1)}
+                                className={`${tombolPutih} px-4 py-2 text-xs`}
+                            >
                                 Coba lagi
                             </button>
                         </div>
                     ) : folders.length === 0 ? (
-                        <p className="text-sm text-slate-500">Belum ada mutasi poin tambahan.</p>
+                        <p className="text-sm text-slate-500">Belum ada kategori mutasi poin.</p>
                     ) : (
-                        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                            {folders.map((f) => (
-                                <li key={f.id ?? 'tanpa'}>
-                                    <button
-                                        type="button"
-                                        onClick={() => bukaFolder(f)}
-                                        className="group flex h-full w-full cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left transition-colors hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                                    >
-                                        <Folder
-                                            className="mt-0.5 h-8 w-8 shrink-0 fill-blue-100 text-blue-500 group-hover:fill-blue-200"
-                                            aria-hidden="true"
-                                        />
-                                        <span className="min-w-0 flex-1">
-                                            <span
-                                                className={`block break-words text-sm font-bold ${
-                                                    f.id === null ? 'italic text-slate-600' : 'text-slate-800'
-                                                }`}
-                                            >
-                                                {f.nama}
+                        <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                            {folders.map((f) => {
+                                const kosong = f.jumlah === 0;
+                                return (
+                                    <li key={f.id ?? 'tanpa'}>
+                                        <button
+                                            type="button"
+                                            onClick={() => bukaFolder(f)}
+                                            className={`group flex h-full w-full cursor-pointer items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition-colors hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
+                                                kosong ? 'opacity-70' : ''
+                                            }`}
+                                        >
+                                            <Folder
+                                                className="mt-0.5 h-6 w-6 shrink-0 fill-blue-100 text-blue-500 group-hover:fill-blue-200"
+                                                aria-hidden="true"
+                                            />
+                                            <span className="min-w-0 flex-1">
+                                                <span
+                                                    className={`block break-words text-sm font-bold leading-snug ${
+                                                        f.id === null ? 'italic text-slate-600' : 'text-slate-800'
+                                                    }`}
+                                                >
+                                                    {f.nama}
+                                                </span>
+                                                {kosong ? (
+                                                    <span className="mt-0.5 block text-xs italic text-slate-400">
+                                                        Belum ada mutasi
+                                                    </span>
+                                                ) : (
+                                                    <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500">
+                                                        <span>{f.jumlah.toLocaleString('id-ID')} mutasi</span>
+                                                        <span
+                                                            className={`text-sm font-extrabold tabular-nums ${warnaPoin(f.total)}`}
+                                                        >
+                                                            {fmtPoin(f.total)}
+                                                            <span className="sr-only"> poin</span>
+                                                        </span>
+                                                    </span>
+                                                )}
                                             </span>
-                                            <span className="mt-0.5 block text-xs text-slate-500">
-                                                {f.jumlah.toLocaleString('id-ID')} mutasi
-                                            </span>
-                                            <span className={`mt-1 block text-sm font-extrabold tabular-nums ${warnaPoin(f.total)}`}>
-                                                {fmtPoin(f.total)}
-                                                <span className="sr-only"> poin</span>
-                                            </span>
-                                        </span>
-                                    </button>
-                                </li>
-                            ))}
+                                        </button>
+                                    </li>
+                                );
+                            })}
                         </ul>
                     )
                 ) : (
                     /* ============ TAMPILAN DAFTAR ============ */
                     <>
                         {folder && (
-                            <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-4">
+                            <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50 p-3.5">
                                 <div className="flex items-start gap-3">
-                                    <FolderOpen className="h-7 w-7 shrink-0 fill-blue-100 text-blue-500" aria-hidden="true" />
+                                    <FolderOpen className="h-6 w-6 shrink-0 fill-blue-100 text-blue-500" aria-hidden="true" />
                                     <div className="min-w-0 flex-1">
                                         <p className="break-words text-sm font-bold text-slate-800">{folder.nama}</p>
                                         <p className="mt-0.5 text-xs text-slate-500">
@@ -235,7 +280,7 @@ export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId
                                     </div>
                                 </div>
                                 <p
-                                    className={`mt-3 whitespace-pre-line break-words text-sm leading-6 ${
+                                    className={`mt-2.5 whitespace-pre-line break-words text-sm leading-6 ${
                                         folder.keterangan ? 'text-slate-700' : 'italic text-slate-400'
                                     }`}
                                 >
@@ -264,19 +309,22 @@ export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId
                             <>
                                 <ul
                                     aria-busy={d.memuat}
-                                    className={`divide-y divide-slate-100 transition-opacity ${d.memuat ? 'opacity-60' : ''}`}
+                                    className={`flex flex-col gap-2 transition-opacity ${d.memuat ? 'opacity-60' : ''}`}
                                 >
                                     {d.baris.map((m) => (
-                                        <li key={m.id} className="flex items-start gap-4 py-3">
+                                        <li
+                                            key={m.id}
+                                            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                                        >
                                             <div className="min-w-0 flex-1">
                                                 <p
-                                                    className={`break-words text-sm leading-5 ${
+                                                    className={`whitespace-pre-line break-words text-sm leading-snug ${
                                                         m.keterangan ? 'font-semibold text-slate-800' : 'italic text-slate-400'
                                                     }`}
                                                 >
                                                     {m.keterangan || 'Tanpa keterangan'}
                                                 </p>
-                                                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                                                <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-500">
                                                     {!folder && (
                                                         <span
                                                             className={`rounded-full px-2 py-0.5 font-semibold ${
@@ -291,7 +339,7 @@ export default function MutasiPoinBox({ anggotaId, className = '' }: { anggotaId
                                                     <time dateTime={m.created_at}>{formatWaktu(m.created_at)}</time>
                                                 </p>
                                             </div>
-                                            <p className={`shrink-0 text-base font-extrabold tabular-nums ${warnaPoin(m.poin)}`}>
+                                            <p className={`shrink-0 text-sm font-extrabold tabular-nums ${warnaPoin(m.poin)}`}>
                                                 {fmtPoin(m.poin)}
                                                 <span className="sr-only"> poin</span>
                                             </p>

@@ -1,15 +1,6 @@
 'use client';
 
-import React, {
-    createContext,
-    useCallback,
-    useContext,
-    useEffect,
-    useMemo,
-    useRef,
-    useState,
-} from 'react';
-import { createClient } from '@supabase/supabase-js';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     X,
     Home,
@@ -21,18 +12,17 @@ import {
     Star,
     Trophy,
     Layers,
-    Clock,
     ShieldCheck,
 } from 'lucide-react';
+import type { ProfileTarget } from '@/app/leaderboard/components/vp-types';
+import { REVEAL_CSS, Reveal, RevealCtx } from '@/app/leaderboard/components/vp-reveal';
+import { useProfileData } from '@/app/leaderboard/components/vp-data';
+import { DonutBacaPinjam, KategoriChart } from '@/app/leaderboard/components/vp-charts';
+import { InfoItem, Kartu, RankProgress, StatItem, tombolBiru } from '@/app/leaderboard/components/vp-ui';
+import RiwayatKunjungan from '@/app/leaderboard/components/vp-riwayat';
+import MutasiPoinBox from '@/app/leaderboard/components/vp-mutasi-poin';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-export interface ProfileTarget {
-    id: string;
-    nama: string;
-}
+export type { ProfileTarget };
 
 interface VisitorProfileModalProps {
     isOpen: boolean;
@@ -40,79 +30,27 @@ interface VisitorProfileModalProps {
     onClose: () => void;
 }
 
-interface AnggotaProfile {
-    id: string;
-    nis: string;
-    nama: string;
-    jenjang: string;
-    organisasi: string | null;
-    kamar: string | null;
-    role: string;
-    rank: string | null;
-    total_kunjungan: number | null;
-    total_baca: number | null;
-    total_pinjam: number | null;
-    poin_tambahan: number | null;
-    total_poin: number | null;
-    avatar_rank: string | null;
-    foto: string | null;
-}
-
-interface RiwayatItem {
-    id: string | number;
-    judul_buku: string | null;
-    kategori: string | null;
-    aktivitas: string | null;
-    created_at: string;
-}
-
-interface KategoriStat {
-    nama: string;
-    baca: number;
-    pinjam: number;
-    total: number;
-}
-
-interface Stats {
-    totalKunjungan: number;
-    totalBaca: number;
-    totalPinjam: number;
-    kategoriFavorit: string | null;
-    kategori: KategoriStat[];
-}
-
+/* Fase tampilan: data profil dari useProfileData (loading/done/error), lalu intro -> moving -> done */
 type Phase = 'loading' | 'intro' | 'moving' | 'done' | 'error';
-type Variant = 'up' | 'left' | 'right' | 'zoom' | 'pop' | 'flip' | 'fade';
 /* full  : semua efek
    lite  : perangkat low-end / hemat data -> efek inti saja (slam, slash, kilap), tanpa efek berat
    calm  : prefers-reduced-motion -> tanpa kedip/getar/slash, hanya fade + kilap lembut */
 type Tier = 'full' | 'lite' | 'calm';
 type ShineMode = 'none' | 'once' | 'loop';
 
-const COLOR_BACA = '#3b82f6';
-const COLOR_PINJAM = '#06b6d4';
 const OVERLAY_BG = '#02030a';
+
+/* durasi emblem meluncur ke halaman (cepat, berhenti mendadak = "menancap") */
+const MOVE_MS = 400;
+
+/* latar halaman detail: public/bg.png dilapisi overlay hitam (0 = tanpa overlay, 1 = hitam penuh) */
+const PAGE_OVERLAY = 0.65;
+const PAGE_BG = `linear-gradient(rgba(0,0,0,${PAGE_OVERLAY}), rgba(0,0,0,${PAGE_OVERLAY})), url('/bg.png')`;
 
 /* bentuk perisai (mask kilap) saat gambar emblem tidak tersedia */
 const SHIELD_MASK =
     `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 6 L88 20 V50 C88 74 70 90 50 96 C30 90 12 74 12 50 V20 Z'/%3E%3C/svg%3E")`;
 
-/* ------------------------------------------------------------------ */
-/* UTIL                                                                */
-/* ------------------------------------------------------------------ */
-function formatWaktu(iso: string) {
-    try {
-        return new Date(iso).toLocaleString('id-ID', {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    } catch {
-        return iso;
-    }
-}
 
 /* Muat + decode gambar emblem sebelum intro dimulai (supaya frame pertama tidak patah).
    Coba mode CORS dulu: kalau berhasil, kilapan bermask bentuk emblem bisa dipakai. */
@@ -146,7 +84,7 @@ async function loadEmblem(
     return { ok: false, cors: false };
 }
 
-/* Tentukan tingkat efek. Low-end TIDAK lagi mematikan animasi, hanya menyederhanakannya. */
+/* Tentukan tingkat efek. Low-end TIDAK mematikan animasi, hanya menyederhanakannya. */
 function detectTier(): Tier {
     if (typeof window === 'undefined') return 'full';
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 'calm';
@@ -164,109 +102,13 @@ function detectTier(): Tier {
 }
 
 /* ------------------------------------------------------------------ */
-/* SCROLL REVEAL (IntersectionObserver, hanya transform + opacity)     */
+/* EMBLEM INTRO (+ kilapan bermask bentuk emblem)                      */
 /* ------------------------------------------------------------------ */
-const RevealCtx = createContext<{
-    root: React.RefObject<HTMLDivElement | null>;
-    enabled: boolean;
-    lite: boolean;
-}>({ root: { current: null }, enabled: false, lite: false });
-
-function useReveal<T extends HTMLElement>() {
-    const { root, enabled, lite } = useContext(RevealCtx);
-    const ref = useRef<T | null>(null);
-    const [inView, setInView] = useState(false);
-
-    useEffect(() => {
-        if (!enabled || inView) return;
-        const el = ref.current;
-        if (!el) return;
-        if (typeof IntersectionObserver === 'undefined') {
-            setInView(true);
-            return;
-        }
-        const io = new IntersectionObserver(
-            (entries) => {
-                if (entries.some((e) => e.isIntersecting)) {
-                    setInView(true);
-                    io.disconnect();
-                }
-            },
-            { root: root.current, threshold: 0.12, rootMargin: '0px 0px -5% 0px' }
-        );
-        io.observe(el);
-        return () => io.disconnect();
-    }, [enabled, inView, root]);
-
-    return { ref, inView, lite };
-}
-
-function rvProps(inView: boolean, lite: boolean, variant: Variant, delay: number) {
-    const v: Variant = lite ? 'fade' : variant;
-    return {
-        className: `vp-rv ${v}${inView ? ' in' : ''}`,
-        style: { ['--d' as string]: `${lite ? Math.min(delay, 0.12) : delay}s` } as React.CSSProperties,
-    };
-}
-
-function stag(on: boolean, lite: boolean, delay: number, dx = 0, dy = 0): React.CSSProperties {
-    if (lite) {
-        return { opacity: on ? 1 : 0, transition: `opacity .4s ease ${Math.min(delay, 0.15)}s` };
-    }
-    return {
-        opacity: on ? 1 : 0,
-        transform: on ? 'none' : `translate3d(${dx}px,${dy}px,0)`,
-        transition: `opacity .6s ease ${delay}s, transform .7s cubic-bezier(.2,.8,.2,1) ${delay}s`,
-    };
-}
-
-function Reveal({
-    variant = 'up',
-    delay = 0,
-    className = '',
-    children,
-}: {
-    variant?: Variant;
-    delay?: number;
-    className?: string;
-    children: React.ReactNode;
-}) {
-    const { ref, inView, lite } = useReveal<HTMLDivElement>();
-    const p = rvProps(inView, lite, variant, delay);
-    return (
-        <div ref={ref} className={`${p.className} ${className}`} style={p.style}>
-            {children}
-        </div>
-    );
-}
-
-function CountUp({ value, active, lite }: { value: number; active: boolean; lite: boolean }) {
-    const ref = useRef<HTMLSpanElement | null>(null);
-
-    useEffect(() => {
-        if (!active || lite) return;
-        const el = ref.current;
-        if (!el) return;
-        const dur = 900;
-        const t0 = performance.now();
-        let raf = 0;
-        const tick = (t: number) => {
-            const p = Math.min(1, (t - t0) / dur);
-            const e = 1 - Math.pow(1 - p, 3);
-            el.textContent = String(Math.round(value * e));
-            if (p < 1) raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
-        return () => cancelAnimationFrame(raf);
-    }, [active, lite, value]);
-
-    return <span ref={ref}>{lite ? value : 0}</span>;
-}
 
 /* ------------------------------------------------------------------ */
 /* EMBLEM (+ kilapan bermask bentuk emblem)                            */
 /* ------------------------------------------------------------------ */
-function Emblem({
+function IntroEmblem({
     src,
     alt,
     cors = false,
@@ -367,518 +209,20 @@ function Emblem({
     );
 }
 
-/* ------------------------------------------------------------------ */
-/* CHARTS (SVG/CSS ringan, animasi hanya transform + opacity)          */
-/* ------------------------------------------------------------------ */
-function DonutBacaPinjam({ baca, pinjam }: { baca: number; pinjam: number }) {
-    const { ref, inView: on, lite } = useReveal<HTMLDivElement>();
-    const total = baca + pinjam;
-    const r = 54;
-    const C = 2 * Math.PI * r;
-    const bacaLen = total ? (C * baca) / total : 0;
-    const pinjamLen = total ? (C * pinjam) / total : 0;
-    const offTransform = lite ? 'rotate(-90deg)' : 'rotate(-200deg) scale(.7)';
-
-    return (
-        <div
-            ref={ref}
-            className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-8"
-        >
-            <div className="relative h-44 w-44 shrink-0">
-                <svg
-                    viewBox="0 0 140 140"
-                    className="h-full w-full"
-                    style={{
-                        transform: on ? 'rotate(-90deg) scale(1)' : offTransform,
-                        opacity: on ? 1 : 0,
-                        transition: lite
-                            ? 'opacity .5s ease'
-                            : 'transform 1.1s cubic-bezier(.2,.8,.2,1), opacity .5s ease',
-                    }}
-                >
-                    <circle cx="70" cy="70" r={r} fill="none" stroke="#e5eaf2" strokeWidth="16" />
-                    {total > 0 && (
-                        <>
-                            <circle
-                                cx="70"
-                                cy="70"
-                                r={r}
-                                fill="none"
-                                stroke={COLOR_BACA}
-                                strokeWidth="16"
-                                strokeDasharray={`${bacaLen} ${C}`}
-                            />
-                            <circle
-                                cx="70"
-                                cy="70"
-                                r={r}
-                                fill="none"
-                                stroke={COLOR_PINJAM}
-                                strokeWidth="16"
-                                strokeDasharray={`${pinjamLen} ${C}`}
-                                strokeDashoffset={-bacaLen}
-                            />
-                        </>
-                    )}
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-3xl font-extrabold text-slate-800">
-                        <CountUp value={total} active={on} lite={lite} />
-                    </span>
-                    <span className="text-xs font-medium text-slate-500">aktivitas</span>
-                </div>
-            </div>
-
-            <div className="space-y-3 text-sm">
-                <div className="flex items-center gap-3" style={stag(on, lite, 0.45, -20)}>
-                    <span className="h-3 w-3 rounded-full" style={{ background: COLOR_BACA }} />
-                    <span className="text-slate-600">Baca</span>
-                    <span className="font-bold text-slate-800">{baca}</span>
-                    <span className="text-slate-400">{total ? Math.round((baca / total) * 100) : 0}%</span>
-                </div>
-                <div className="flex items-center gap-3" style={stag(on, lite, 0.6, -20)}>
-                    <span className="h-3 w-3 rounded-full" style={{ background: COLOR_PINJAM }} />
-                    <span className="text-slate-600">Pinjam</span>
-                    <span className="font-bold text-slate-800">{pinjam}</span>
-                    <span className="text-slate-400">{total ? Math.round((pinjam / total) * 100) : 0}%</span>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function KategoriChart({ data }: { data: KategoriStat[] }) {
-    const { ref, inView: on, lite } = useReveal<HTMLDivElement>();
-
-    if (data.length === 0) {
-        return (
-            <div ref={ref}>
-                <p className="text-sm text-slate-500">Belum ada data kategori buku.</p>
-            </div>
-        );
-    }
-    const max = Math.max(...data.map((d) => d.total), 1);
-
-    const seg = (pct: number, color: string, delay: number): React.CSSProperties => ({
-        width: `${pct}%`,
-        background: color,
-        transformOrigin: 'left',
-        transform: on || lite ? 'scaleX(1)' : 'scaleX(0)',
-        transition: lite ? 'none' : `transform .9s cubic-bezier(.2,.8,.2,1) ${delay}s`,
-    });
-
-    return (
-        <div ref={ref}>
-            <div className="mb-4 flex items-center gap-5 text-xs font-medium text-slate-500">
-                <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLOR_BACA }} />
-                    Baca
-                </span>
-                <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: COLOR_PINJAM }} />
-                    Pinjam
-                </span>
-            </div>
-
-            <div className="space-y-4">
-                {data.map((d, i) => (
-                    <div key={d.nama} style={stag(on, lite, 0.1 + i * 0.09, 28)}>
-                        <div className="mb-1.5 flex items-baseline justify-between gap-3 text-sm">
-                            <span className="truncate font-semibold text-slate-700">{d.nama}</span>
-                            <span className="shrink-0 text-xs text-slate-500">
-                                <span style={{ color: COLOR_BACA }} className="font-bold">
-                                    {d.baca}
-                                </span>
-                                {' · '}
-                                <span style={{ color: COLOR_PINJAM }} className="font-bold">
-                                    {d.pinjam}
-                                </span>
-                            </span>
-                        </div>
-                        <div className="flex h-3 w-full overflow-hidden rounded-full bg-slate-200/60">
-                            <div style={seg((d.baca / max) * 100, COLOR_BACA, 0.25 + i * 0.09)} />
-                            <div style={seg((d.pinjam / max) * 100, COLOR_PINJAM, 0.4 + i * 0.09)} />
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
-
-/* ------------------------------------------------------------------ */
-/* SMALL PIECES                                                        */
-/* ------------------------------------------------------------------ */
-function StatItem({
-    icon,
-    label,
-    value,
-    color,
-    variant,
-    delay,
-}: {
-    icon: React.ReactNode;
-    label: string;
-    value: number;
-    color: string;
-    variant: Variant;
-    delay: number;
-}) {
-    const { ref, inView, lite } = useReveal<HTMLDivElement>();
-    const p = rvProps(inView, lite, variant, delay);
-    return (
-        <div
-            ref={ref}
-            className={`${p.className} flex flex-col items-center text-center`}
-            style={p.style}
-        >
-            <div className={`mb-2 ${color}`}>{icon}</div>
-            <div className="text-4xl font-extrabold leading-none text-slate-800">
-                <CountUp value={value} active={inView} lite={lite} />
-            </div>
-            <div className="mt-2 text-xs font-semibold text-slate-500">{label}</div>
-        </div>
-    );
-}
-
-function InfoItem({
-    icon,
-    label,
-    value,
-}: {
-    icon: React.ReactNode;
-    label: string;
-    value: string;
-}) {
-    return (
-        <div className="flex items-center gap-3">
-            <div className="text-blue-400">{icon}</div>
-            <div className="min-w-0">
-                <div className="text-[11px] font-semibold text-slate-400">{label}</div>
-                <div className="truncate text-sm font-bold text-slate-800">{value}</div>
-            </div>
-        </div>
-    );
-}
-
-function SectionTitle({
-    children,
-    variant = 'left',
-}: {
-    children: React.ReactNode;
-    variant?: Variant;
-}) {
-    return (
-        <Reveal variant={variant} className="mb-5">
-            <h3 className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                {children}
-            </h3>
-        </Reveal>
-    );
-}
-
-/* ------------------------------------------------------------------ */
-/* MAIN                                                                */
-/* ------------------------------------------------------------------ */
-export default function VisitorProfileModal({
-    isOpen,
-    target,
-    onClose,
-}: VisitorProfileModalProps) {
-    const [phase, setPhase] = useState<Phase>('loading');
-    const [errorMsg, setErrorMsg] = useState<string | null>(null);
-    const [anggota, setAnggota] = useState<AnggotaProfile | null>(null);
-    const [stats, setStats] = useState<Stats | null>(null);
-    const [riwayat, setRiwayat] = useState<RiwayatItem[]>([]);
-    const [emblemSrc, setEmblemSrc] = useState<string | null>(null);
-    const [emblemCors, setEmblemCors] = useState(false);
-    const [dest, setDest] = useState<{ x: number; y: number } | null>(null);
-    const [vp, setVp] = useState({ w: 1024, h: 768 });
-    const [tier, setTier] = useState<Tier>('full');
-    /* go = intro baru benar-benar dimulai setelah layout stabil (2 frame),
-       supaya timeline animasi tidak "termakan" oleh jank saat render awal */
-    const [go, setGo] = useState(false);
-
-    const placeholderRef = useRef<HTMLDivElement | null>(null);
-    const scrollRef = useRef<HTMLDivElement | null>(null);
-
-    const lite = tier !== 'full';
-    const revealed = phase === 'moving' || phase === 'done';
-
-    const ctxValue = useMemo(
-        () => ({ root: scrollRef, enabled: revealed, lite }),
-        [revealed, lite]
-    );
-
-    /* ukuran emblem: akhir (size) dan saat intro (big) */
-    const isMobile = vp.w < 640;
-    const size = isMobile ? 128 : 160;
-    const big = Math.max(size, Math.min(size * 2.4, vp.h * 0.42, vp.w * 0.8));
-    const k = big / size;
-
-    /* deteksi perangkat */
-    useEffect(() => {
-        if (!isOpen) return;
-        setTier(detectTier());
-    }, [isOpen]);
-
-    /* viewport */
-    useEffect(() => {
-        if (!isOpen) return;
-        const update = () => setVp({ w: window.innerWidth, h: window.innerHeight });
-        update();
-        window.addEventListener('resize', update);
-        return () => window.removeEventListener('resize', update);
-    }, [isOpen]);
-
-    /* kunci scroll body + Escape */
-    useEffect(() => {
-        if (!isOpen) return;
-        const prev = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        window.addEventListener('keydown', onKey);
-        return () => {
-            document.body.style.overflow = prev;
-            window.removeEventListener('keydown', onKey);
-        };
-    }, [isOpen, onClose]);
-
-    /* reset saat ditutup */
-    useEffect(() => {
-        if (isOpen) return;
-        setPhase('loading');
-        setAnggota(null);
-        setStats(null);
-        setRiwayat([]);
-        setEmblemSrc(null);
-        setEmblemCors(false);
-        setDest(null);
-        setGo(false);
-    }, [isOpen]);
-
-    /* load data */
-    useEffect(() => {
-        if (!isOpen || !target) return;
-
-        let cancelled = false;
-
-        async function load(id: string) {
-            setPhase('loading');
-            setErrorMsg(null);
-            setAnggota(null);
-            setStats(null);
-            setRiwayat([]);
-            setEmblemSrc(null);
-            setEmblemCors(false);
-            setDest(null);
-            setGo(false);
-
-            try {
-                const [anggotaRes, totalRes, bacaRes, pinjamRes, recentRes, katRes] =
-                    await Promise.all([
-                        supabase.from('anggota').select('*').eq('id', id).single(),
-                        supabase
-                            .from('data_pengunjung')
-                            .select('id', { count: 'exact', head: true })
-                            .eq('id_anggota', id),
-                        supabase
-                            .from('data_pengunjung')
-                            .select('id', { count: 'exact', head: true })
-                            .eq('id_anggota', id)
-                            .eq('aktivitas', 'Baca'),
-                        supabase
-                            .from('data_pengunjung')
-                            .select('id', { count: 'exact', head: true })
-                            .eq('id_anggota', id)
-                            .eq('aktivitas', 'Pinjam'),
-                        supabase
-                            .from('data_pengunjung')
-                            .select('id, judul_buku, kategori, aktivitas, created_at')
-                            .eq('id_anggota', id)
-                            .order('created_at', { ascending: false })
-                            .limit(10),
-                        supabase
-                            .from('data_pengunjung')
-                            .select('kategori, aktivitas')
-                            .eq('id_anggota', id)
-                            .not('kategori', 'is', null)
-                            .limit(1000),
-                    ]);
-
-                if (anggotaRes.error) throw anggotaRes.error;
-                if (totalRes.error) throw totalRes.error;
-                if (bacaRes.error) throw bacaRes.error;
-                if (pinjamRes.error) throw pinjamRes.error;
-                if (recentRes.error) throw recentRes.error;
-
-                const map: Record<string, KategoriStat> = {};
-                if (!katRes.error && katRes.data) {
-                    for (const row of katRes.data as {
-                        kategori: string | null;
-                        aktivitas: string | null;
-                    }[]) {
-                        if (!row.kategori) continue;
-                        if (!map[row.kategori]) {
-                            map[row.kategori] = { nama: row.kategori, baca: 0, pinjam: 0, total: 0 };
-                        }
-                        if (row.aktivitas === 'Pinjam') map[row.kategori].pinjam += 1;
-                        else if (row.aktivitas === 'Baca') map[row.kategori].baca += 1;
-                        else continue;
-                        map[row.kategori].total += 1;
-                    }
-                }
-                const kategori = Object.values(map)
-                    .sort((a, b) => b.total - a.total)
-                    .slice(0, 6);
-
-                const profile = anggotaRes.data as AnggotaProfile;
-
-                let src: string | null = null;
-                let cors = false;
-                if (profile.avatar_rank) {
-                    const res = await loadEmblem(profile.avatar_rank);
-                    src = res.ok ? profile.avatar_rank : null;
-                    cors = res.ok && res.cors;
-                }
-
-                if (cancelled) return;
-
-                setAnggota(profile);
-                setEmblemSrc(src);
-                setEmblemCors(cors);
-                setStats({
-                    totalKunjungan: totalRes.count ?? 0,
-                    totalBaca: bacaRes.count ?? 0,
-                    totalPinjam: pinjamRes.count ?? 0,
-                    kategoriFavorit: kategori.length > 0 ? kategori[0].nama : null,
-                    kategori,
-                });
-                setRiwayat((recentRes.data || []) as RiwayatItem[]);
-                setPhase('intro');
-            } catch (err: any) {
-                if (!cancelled) {
-                    setErrorMsg(err?.message || 'Gagal memuat profil pengunjung.');
-                    setPhase('error');
-                }
-            }
+/* Keyframe khusus intro (scroll reveal memakai REVEAL_CSS dari vp-reveal) */
+const INTRO_CSS = `
+        /* TANCAP: emblem menumbuk halaman -> membal kecil, cahaya meledak di belakangnya */
+        @keyframes vp-plant{
+          0%{transform:scale(1.16) translate3d(0,-8px,0)}
+          28%{transform:scale(.92) translate3d(0,3px,0)}
+          55%{transform:scale(1.04) translate3d(0,-1px,0)}
+          100%{transform:scale(1) translate3d(0,0,0)}
         }
-
-        load(target.id);
-
-        return () => {
-            cancelled = true;
-        };
-    }, [isOpen, target]);
-
-    /* mulai intro setelah 2 frame (layout & decode sudah settle) */
-    useEffect(() => {
-        if (phase !== 'intro') return;
-        let r2 = 0;
-        const r1 = requestAnimationFrame(() => {
-            r2 = requestAnimationFrame(() => setGo(true));
-        });
-        return () => {
-            cancelAnimationFrame(r1);
-            cancelAnimationFrame(r2);
-        };
-    }, [phase]);
-
-    /* pindahkan emblem ke posisi akhir */
-    const startMove = useCallback(() => {
-        const el = placeholderRef.current;
-        if (el) {
-            const r = el.getBoundingClientRect();
-            setDest({ x: r.left, y: r.top });
+        @keyframes vp-burst{
+          0%{opacity:0;transform:scale(.35)}
+          14%{opacity:1}
+          100%{opacity:0;transform:scale(1.6)}
         }
-        setPhase((p) => (p === 'intro' ? 'moving' : p));
-    }, []);
-
-    /* auto lanjut (ketuk untuk melewati tetap bisa) */
-    useEffect(() => {
-        if (phase !== 'intro' || !go) return;
-        const ms = tier === 'calm' ? 1600 : tier === 'lite' ? 2300 : 2500;
-        const t = setTimeout(startMove, ms);
-        return () => clearTimeout(t);
-    }, [phase, go, startMove, tier]);
-
-    useEffect(() => {
-        if (phase !== 'moving') return;
-        const t = setTimeout(() => setPhase('done'), 950);
-        return () => clearTimeout(t);
-    }, [phase]);
-
-    if (!isOpen || !target) return null;
-
-    const nama = anggota?.nama || target.nama;
-    const terbaru = riwayat[0];
-    const rankName = anggota?.rank || 'Warrior';
-    const showOverlay = phase === 'loading' || phase === 'intro' || phase === 'moving';
-    const showFixedEmblem = phase === 'intro' || phase === 'moving';
-
-    /* geometri intro */
-    const shift = Math.round(Math.min(48, vp.h * 0.06));
-    const cx0 = vp.w / 2 - big / 2;
-    const cy0 = (vp.h - big) / 2 - shift;
-    const ex = vp.w / 2;
-    const ey = cy0 + big / 2;
-    const textTop = cy0 + big + 14;
-
-    const emblemTransform =
-        phase === 'moving' && dest
-            ? `translate3d(${dest.x}px, ${dest.y}px, 0) scale(${1 / k})`
-            : `translate3d(${cx0}px, ${cy0}px, 0) scale(1)`;
-
-    /* timeline: T = detik saat emblem menghantam layar (tegas & cepat) */
-    const T = tier === 'calm' ? 0.1 : 0.4;
-    const dropDelay = Math.max(0, T - 0.37); // vp-drop 0.64s, tumbukan di 58% = 0.37s
-
-    const C = (s: number): React.CSSProperties => ({
-        position: 'absolute',
-        left: ex - s / 2,
-        top: ey - s / 2,
-        width: s,
-        height: s,
-        pointerEvents: 'none',
-    });
-
-    const sparks = Array.from({ length: 12 }, (_, i) => ({
-        a: 30 * i + 12,
-        d: 170 + ((i * 53) % 120),
-    }));
-
-    const raysSize = Math.min(760, Math.max(vp.w, vp.h) * 0.95);
-
-    /* slash menyilang layar */
-    const diag = Math.ceil(Math.hypot(vp.w, vp.h));
-    const slashes = [
-        { rot: -24, delay: 0, origin: 'left' },
-        { rot: 19, delay: 0.08, origin: 'right' },
-    ];
-
-    return (
-        <div
-            ref={scrollRef}
-            className="fixed inset-0 z-[60] bg-[#f7f8fa] text-slate-800"
-            style={{ overflowY: phase === 'done' || phase === 'error' ? 'auto' : 'hidden' }}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Profil Pengunjung"
-        >
-            <style>{`
-        /* scroll reveal */
-        .vp-rv{opacity:0;transition:opacity .6s ease var(--d,0s),transform .75s cubic-bezier(.2,.8,.2,1) var(--d,0s)}
-        .vp-rv.up{transform:translate3d(0,28px,0)}
-        .vp-rv.left{transform:translate3d(-36px,0,0)}
-        .vp-rv.right{transform:translate3d(36px,0,0)}
-        .vp-rv.zoom{transform:scale(.88)}
-        .vp-rv.pop{transform:scale(.6);transition-timing-function:ease,cubic-bezier(.34,1.56,.64,1)}
-        .vp-rv.flip{transform:perspective(700px) rotateX(40deg) translate3d(0,18px,0);transform-origin:50% 100%}
-        .vp-rv.fade{transition:opacity .45s ease var(--d,0s)}
-        .vp-rv.in{opacity:1;transform:none}
-
         /* ===== intro emblem: semua animasi hanya transform + opacity ===== */
         @keyframes vp-appear{from{opacity:0}to{opacity:1}}
 
@@ -1003,39 +347,236 @@ export default function VisitorProfileModal({
           100%{opacity:0;transform:scale(0) rotate(90deg)}
         }
 
-        @media (prefers-reduced-motion: reduce){
-          .vp-rv{transition:none!important;opacity:1!important;transform:none!important}
+`;
+
+/* ------------------------------------------------------------------ */
+/* MAIN                                                                */
+/* ------------------------------------------------------------------ */
+export default function VisitorProfileModal({
+    isOpen,
+    target,
+    onClose,
+}: VisitorProfileModalProps) {
+    /* data profil + statistik (sama persis dengan VisitorProfileModal) */
+    const { phase: dataPhase, errorMsg, anggota, stats, terbaru } = useProfileData(isOpen, target);
+
+    const [stage, setStage] = useState<Exclude<Phase, 'error'>>('loading');
+    const [emblemSrc, setEmblemSrc] = useState<string | null>(null);
+    const [emblemCors, setEmblemCors] = useState(false);
+    const [dest, setDest] = useState<{ x: number; y: number } | null>(null);
+    const [vp, setVp] = useState({ w: 1024, h: 768 });
+    const [tier, setTier] = useState<Tier>('full');
+    /* go = intro baru benar-benar dimulai setelah layout stabil (2 frame),
+       supaya timeline animasi tidak "termakan" oleh jank saat render awal */
+    const [go, setGo] = useState(false);
+
+    const placeholderRef = useRef<HTMLDivElement | null>(null);
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+
+    const phase: Phase =
+        dataPhase === 'error' ? 'error' : dataPhase === 'loading' ? 'loading' : stage;
+
+    const lite = tier !== 'full';
+    const revealed = phase === 'moving' || phase === 'done';
+
+    const ctxValue = useMemo(
+        () => ({ root: scrollRef, enabled: revealed, lite }),
+        [revealed, lite]
+    );
+
+    /* ukuran emblem: akhir (size) dan saat intro (big) */
+    const isMobile = vp.w < 640;
+    const size = isMobile ? 128 : 160;
+    const big = Math.max(size, Math.min(size * 2.4, vp.h * 0.42, vp.w * 0.8));
+    const k = big / size;
+
+    /* deteksi perangkat */
+    useEffect(() => {
+        if (!isOpen) return;
+        setTier(detectTier());
+    }, [isOpen]);
+
+    /* viewport */
+    useEffect(() => {
+        if (!isOpen) return;
+        const update = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+        update();
+        window.addEventListener('resize', update);
+        return () => window.removeEventListener('resize', update);
+    }, [isOpen]);
+
+    /* kunci scroll body + Escape */
+    useEffect(() => {
+        if (!isOpen) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => {
+            document.body.style.overflow = prev;
+            window.removeEventListener('keydown', onKey);
+        };
+    }, [isOpen, onClose]);
+
+    /* data siap -> preload emblem -> mulai intro; selain itu reset state intro */
+    useEffect(() => {
+        if (!isOpen || dataPhase !== 'done' || !anggota) {
+            setStage('loading');
+            setGo(false);
+            setDest(null);
+            setEmblemSrc(null);
+            setEmblemCors(false);
+            return;
         }
-      `}</style>
+
+        let cancelled = false;
+        (async () => {
+            let src: string | null = null;
+            let cors = false;
+            if (anggota.avatar_rank) {
+                const res = await loadEmblem(anggota.avatar_rank);
+                src = res.ok ? anggota.avatar_rank : null;
+                cors = res.ok && res.cors;
+            }
+            if (cancelled) return;
+            setEmblemSrc(src);
+            setEmblemCors(cors);
+            setStage('intro');
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen, dataPhase, anggota]);
+
+    /* mulai intro setelah 2 frame (layout & decode sudah settle) */
+    useEffect(() => {
+        if (phase !== 'intro') return;
+        let r2 = 0;
+        const r1 = requestAnimationFrame(() => {
+            r2 = requestAnimationFrame(() => setGo(true));
+        });
+        return () => {
+            cancelAnimationFrame(r1);
+            cancelAnimationFrame(r2);
+        };
+    }, [phase]);
+
+    /* pindahkan emblem ke posisi akhir */
+    const startMove = useCallback(() => {
+        const el = placeholderRef.current;
+        if (el) {
+            const r = el.getBoundingClientRect();
+            setDest({ x: r.left, y: r.top });
+        }
+        setStage((p) => (p === 'intro' ? 'moving' : p));
+    }, []);
+
+    /* auto lanjut (ketuk untuk melewati tetap bisa) */
+    useEffect(() => {
+        if (phase !== 'intro' || !go) return;
+        const ms = tier === 'calm' ? 1600 : tier === 'lite' ? 2300 : 2500;
+        const t = setTimeout(startMove, ms);
+        return () => clearTimeout(t);
+    }, [phase, go, startMove, tier]);
+
+    useEffect(() => {
+        if (phase !== 'moving') return;
+        const t = setTimeout(() => setStage('done'), MOVE_MS + 30);
+        return () => clearTimeout(t);
+    }, [phase]);
+
+    if (!isOpen || !target) return null;
+
+    const nama = anggota?.nama || target.nama;
+    const rankName = anggota?.rank || 'Warrior';
+    const showOverlay = phase === 'loading' || phase === 'intro' || phase === 'moving';
+    const showFixedEmblem = phase === 'intro' || phase === 'moving';
+
+    /* geometri intro */
+    const shift = Math.round(Math.min(48, vp.h * 0.06));
+    const cx0 = vp.w / 2 - big / 2;
+    const cy0 = (vp.h - big) / 2 - shift;
+    const ex = vp.w / 2;
+    const ey = cy0 + big / 2;
+    const textTop = cy0 + big + 14;
+
+    const emblemTransform =
+        phase === 'moving' && dest
+            ? `translate3d(${dest.x}px, ${dest.y}px, 0) scale(${1 / k})`
+            : `translate3d(${cx0}px, ${cy0}px, 0) scale(1)`;
+
+    /* timeline: T = detik saat emblem menghantam layar (tegas & cepat) */
+    const T = tier === 'calm' ? 0.1 : 0.4;
+    const dropDelay = Math.max(0, T - 0.37); // vp-drop 0.64s, tumbukan di 58% = 0.37s
+
+    const C = (s: number): React.CSSProperties => ({
+        position: 'absolute',
+        left: ex - s / 2,
+        top: ey - s / 2,
+        width: s,
+        height: s,
+        pointerEvents: 'none',
+    });
+
+    const sparks = Array.from({ length: 12 }, (_, i) => ({
+        a: 30 * i + 12,
+        d: 170 + ((i * 53) % 120),
+    }));
+
+    const raysSize = Math.min(760, Math.max(vp.w, vp.h) * 0.95);
+
+    /* slash menyilang layar */
+    const diag = Math.ceil(Math.hypot(vp.w, vp.h));
+    const slashes = [
+        { rot: -24, delay: 0, origin: 'left' },
+        { rot: 19, delay: 0.08, origin: 'right' },
+    ];
+
+    return (
+        <div
+            ref={scrollRef}
+            className="fixed inset-0 z-[60] text-slate-100"
+            style={{
+                overflowX: 'hidden',
+                overflowY: phase === 'done' || phase === 'error' ? 'auto' : 'hidden',
+                backgroundColor: OVERLAY_BG,
+                backgroundImage: PAGE_BG,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Profil Pengunjung"
+        >
+            <style>{REVEAL_CSS}</style>
+            <style>{INTRO_CSS}</style>
 
             {/* TOMBOL TUTUP */}
             <button
                 type="button"
                 onClick={onClose}
                 aria-label="Tutup profil"
-                className={`fixed right-4 top-4 z-[90] cursor-pointer rounded-full p-2.5 transition-colors duration-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:right-6 sm:top-6 ${phase === 'done' || phase === 'error'
-                        ? 'text-slate-500 hover:bg-slate-200/70 hover:text-slate-800'
-                        : 'text-white/40 hover:bg-white/10 hover:text-white'
-                    }`}
+                className={`fixed right-4 top-4 z-[90] h-11 w-11 sm:right-6 sm:top-6 ${tombolBiru}`}
             >
-                <X className="h-6 w-6" />
+                <X className="h-5 w-5" aria-hidden="true" />
             </button>
 
-            {/* ============ HALAMAN PROFIL ============ */}
+            {/* ============ HALAMAN PROFIL (isi sama dengan VisitorProfileModal) ============ */}
             <RevealCtx.Provider value={ctxValue}>
                 <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col items-center px-5 pb-20 pt-16 sm:px-10 sm:pt-20">
                     {phase === 'error' && (
-                        <div
-                            role="alert"
-                            className="mt-24 max-w-md text-center text-sm font-medium text-red-700"
-                        >
+                        <div role="alert" className="mt-24 max-w-md text-center text-sm font-medium text-red-300">
                             {errorMsg}
                         </div>
                     )}
 
                     {anggota && stats && (
                         <>
-                            {/* EMBLEM (posisi akhir) */}
+                            {/* EMBLEM (posisi akhir; emblem intro mendarat di sini) */}
                             <div
                                 ref={placeholderRef}
                                 className="relative shrink-0"
@@ -1052,8 +593,34 @@ export default function VisitorProfileModal({
                                     }}
                                 />
                                 {phase === 'done' && (
-                                    <div className="relative h-full w-full">
-                                        <Emblem
+                                    <>
+                                        {/* cahaya meledak tepat saat emblem tertancap */}
+                                        <div
+                                            className="pointer-events-none absolute rounded-full"
+                                            style={{
+                                                inset: -90,
+                                                background:
+                                                    'radial-gradient(circle, rgba(191,219,254,.95) 0%, rgba(59,130,246,.55) 35%, transparent 68%)',
+                                                animation: 'vp-burst .8s ease-out both',
+                                            }}
+                                        />
+                                        {tier !== 'calm' && (
+                                            <div
+                                                className="pointer-events-none absolute inset-0 rounded-full"
+                                                style={{
+                                                    border: '2px solid rgba(147,197,253,.9)',
+                                                    animation: 'vp-ring .7s ease-out both',
+                                                }}
+                                            />
+                                        )}
+                                    </>
+                                )}
+                                {phase === 'done' && (
+                                    <div
+                                        className="relative h-full w-full"
+                                        style={tier !== 'calm' ? { animation: 'vp-plant .4s ease-out both' } : undefined}
+                                    >
+                                        <IntroEmblem
                                             src={emblemSrc}
                                             alt={`Rank ${anggota.rank || ''}`}
                                             cors={emblemCors}
@@ -1072,12 +639,12 @@ export default function VisitorProfileModal({
                                     {/* NAMA, NIS, RANK */}
                                     <div className="mt-6 text-center">
                                         <Reveal variant="up" delay={0.5}>
-                                            <h2 className="text-3xl font-extrabold leading-tight text-slate-800 sm:text-4xl">
+                                            <h2 className="text-3xl font-extrabold leading-tight text-white sm:text-4xl">
                                                 {nama}
                                             </h2>
                                         </Reveal>
                                         <Reveal variant="up" delay={0.6}>
-                                            <p className="mt-1.5 text-sm font-medium tracking-wide text-slate-500">
+                                            <p className="mt-1.5 text-sm font-medium tracking-wide text-slate-300">
                                                 NIS {anggota.nis || '-'}
                                             </p>
                                         </Reveal>
@@ -1085,7 +652,7 @@ export default function VisitorProfileModal({
                                             <p
                                                 className="mt-3 text-lg font-extrabold uppercase tracking-[0.3em] sm:text-xl"
                                                 style={{
-                                                    background: 'linear-gradient(90deg,#1d4ed8,#3b82f6,#06b6d4)',
+                                                    background: 'linear-gradient(90deg,#60a5fa,#93c5fd,#22d3ee)',
                                                     WebkitBackgroundClip: 'text',
                                                     backgroundClip: 'text',
                                                     color: 'transparent',
@@ -1095,24 +662,27 @@ export default function VisitorProfileModal({
                                             </p>
                                         </Reveal>
                                         <Reveal variant="fade" delay={0.85}>
-                                            <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold capitalize text-slate-400">
+                                            <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold capitalize text-slate-300">
                                                 <ShieldCheck className="h-3.5 w-3.5" />
                                                 {anggota.role}
                                             </p>
                                         </Reveal>
                                     </div>
 
+                                    {/* INDIKATOR POIN MENUJU RANK BERIKUTNYA */}
+                                    <RankProgress poin={anggota.total_poin ?? 0} className="mt-8" />
+
                                     {/* KUNJUNGAN KE-N */}
-                                    <Reveal variant="up" delay={0.9} className="mt-8 max-w-xl">
-                                        <p className="text-center text-sm leading-relaxed text-slate-600">
-                                            Terima kasih, <span className="font-bold text-slate-800">{anggota.nama}</span>!
+                                    <Reveal variant="up" delay={0.9} className="mt-6 max-w-xl">
+                                        <p className="text-center text-sm leading-relaxed text-slate-200">
+                                            Terima kasih, <span className="font-bold text-white">{anggota.nama}</span>!
                                             Kunjungan Anda tercatat sebagai kunjungan ke-
-                                            <span className="font-extrabold text-blue-600">{stats.totalKunjungan}</span>
+                                            <span className="font-extrabold text-blue-400">{stats.totalKunjungan}</span>
                                             {terbaru?.judul_buku ? (
                                                 <>
                                                     {' '}
                                                     dengan {terbaru.aktivitas === 'Pinjam' ? 'meminjam' : 'membaca'}{' '}
-                                                    <span className="font-bold text-slate-800">
+                                                    <span className="font-bold text-white">
                                                         &ldquo;{terbaru.judul_buku}&rdquo;
                                                     </span>
                                                 </>
@@ -1122,7 +692,7 @@ export default function VisitorProfileModal({
                                     </Reveal>
 
                                     {/* STATISTIK */}
-                                    <div className="mt-14 grid w-full grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-4">
+                                    <div className="mt-12 grid w-full grid-cols-2 gap-4 sm:grid-cols-4">
                                         <StatItem
                                             variant="left"
                                             delay={0}
@@ -1157,118 +727,70 @@ export default function VisitorProfileModal({
                                         />
                                     </div>
 
-                                    {/* DIAGRAM */}
-                                    <div className="mt-20 grid w-full gap-16 lg:grid-cols-2">
-                                        <div>
-                                            <SectionTitle variant="left">Perbandingan Baca &amp; Pinjam</SectionTitle>
-                                            <DonutBacaPinjam baca={stats.totalBaca} pinjam={stats.totalPinjam} />
-                                        </div>
-                                        <div>
-                                            <SectionTitle variant="right">Kategori Buku</SectionTitle>
-                                            <KategoriChart data={stats.kategori} />
-                                        </div>
-                                    </div>
-
-                                    {/* INFO + RIWAYAT */}
-                                    <div className="mt-20 grid w-full gap-16 lg:grid-cols-5">
-                                        <div className="lg:col-span-2">
-                                            <SectionTitle variant="left">Informasi Anggota</SectionTitle>
-                                            <div className="space-y-5">
-                                                <Reveal variant="left" delay={0}>
+                                    {/* DONAT + INFORMASI (tinggi sama, tanpa ruang kosong) */}
+                                    <div className="mt-5 grid w-full gap-5 lg:grid-cols-2">
+                                        <Reveal variant="left" className="h-full">
+                                            <Kartu judul="Perbandingan Baca & Pinjam" className="h-full">
+                                                <div className="flex flex-1 items-center justify-center">
+                                                    <DonutBacaPinjam baca={stats.totalBaca} pinjam={stats.totalPinjam} />
+                                                </div>
+                                            </Kartu>
+                                        </Reveal>
+                                        <Reveal variant="right" className="h-full">
+                                            <Kartu judul="Informasi Anggota" className="h-full">
+                                                <div className="flex flex-1 flex-col justify-between gap-4">
                                                     <InfoItem
                                                         icon={<Home className="h-4 w-4" />}
                                                         label="Kamar"
                                                         value={anggota.kamar || '-'}
                                                     />
-                                                </Reveal>
-                                                <Reveal variant="left" delay={0.07}>
                                                     <InfoItem
                                                         icon={<GraduationCap className="h-4 w-4" />}
                                                         label="Jenjang"
                                                         value={anggota.jenjang || '-'}
                                                     />
-                                                </Reveal>
-                                                <Reveal variant="left" delay={0.14}>
                                                     <InfoItem
                                                         icon={<Building2 className="h-4 w-4" />}
                                                         label="Organisasi"
                                                         value={anggota.organisasi || '-'}
                                                     />
-                                                </Reveal>
-                                                <Reveal variant="left" delay={0.21}>
                                                     <InfoItem
                                                         icon={<Layers className="h-4 w-4" />}
                                                         label="Kategori Favorit"
                                                         value={stats.kategoriFavorit || '-'}
                                                     />
-                                                </Reveal>
-                                                <Reveal variant="left" delay={0.28}>
                                                     <InfoItem
                                                         icon={<Trophy className="h-4 w-4" />}
                                                         label="Poin Tambahan"
                                                         value={String(anggota.poin_tambahan ?? 0)}
                                                     />
-                                                </Reveal>
-                                            </div>
-                                        </div>
-
-                                        <div className="lg:col-span-3">
-                                            <SectionTitle variant="right">Riwayat Kunjungan Terakhir</SectionTitle>
-                                            {riwayat.length === 0 ? (
-                                                <Reveal variant="fade">
-                                                    <p className="text-sm text-slate-500">Belum ada riwayat kunjungan.</p>
-                                                </Reveal>
-                                            ) : (
-                                                <ul className="space-y-5">
-                                                    {riwayat.map((r, i) => {
-                                                        const variants: Variant[] = ['right', 'flip', 'zoom'];
-                                                        const warna = r.aktivitas === 'Pinjam' ? COLOR_PINJAM : COLOR_BACA;
-                                                        return (
-                                                            <li key={r.id}>
-                                                                <Reveal variant={variants[i % 3]} delay={0.03}>
-                                                                    <div className="flex items-start gap-3">
-                                                                        <span
-                                                                            className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full"
-                                                                            style={{ background: warna }}
-                                                                        />
-                                                                        <div className="min-w-0 flex-1">
-                                                                            <div className="flex items-start justify-between gap-3">
-                                                                                <div className="line-clamp-2 text-sm font-semibold text-slate-800">
-                                                                                    {r.judul_buku || '-'}
-                                                                                </div>
-                                                                                <div className="flex shrink-0 items-center gap-2 text-[11px] font-bold">
-                                                                                    {i === 0 && <span className="text-blue-600">Baru</span>}
-                                                                                    <span style={{ color: warna }}>{r.aktivitas || '-'}</span>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-xs text-slate-500">
-                                                                                <span className="flex items-center gap-1">
-                                                                                    <Layers className="h-3 w-3" />
-                                                                                    {r.kategori || '-'}
-                                                                                </span>
-                                                                                <span className="flex items-center gap-1">
-                                                                                    <Clock className="h-3 w-3" />
-                                                                                    {formatWaktu(r.created_at)}
-                                                                                </span>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                </Reveal>
-                                                            </li>
-                                                        );
-                                                    })}
-                                                </ul>
-                                            )}
-                                        </div>
+                                                </div>
+                                            </Kartu>
+                                        </Reveal>
                                     </div>
 
+                                    {/* KATEGORI BUKU + RIWAYAT KUNJUNGAN (tinggi tetap, scroll di dalam kartu) */}
+                                    <div className="mt-5 grid w-full gap-5 lg:grid-cols-2">
+                                        <Reveal variant="left" className="h-[420px]">
+                                            <Kartu judul="Kategori Buku" className="h-full">
+                                                <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                                                    <KategoriChart data={stats.kategori} />
+                                                </div>
+                                            </Kartu>
+                                        </Reveal>
+                                        <Reveal variant="right" className="h-[420px]">
+                                            <RiwayatKunjungan anggotaId={anggota.id} className="h-full" />
+                                        </Reveal>
+                                    </div>
+
+                                    {/* MUTASI POIN (folder kategori) */}
+                                    <Reveal variant="up" className="mt-5 h-[480px] w-full">
+                                        <MutasiPoinBox anggotaId={anggota.id} className="h-full" />
+                                    </Reveal>
+
                                     {/* TOMBOL SELESAI */}
-                                    <Reveal variant="pop" className="mt-20 w-full max-w-sm">
-                                        <button
-                                            type="button"
-                                            onClick={onClose}
-                                            className="w-full cursor-pointer rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-bold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f7f8fa]"
-                                        >
+                                    <Reveal variant="pop" className="mt-12 w-full max-w-sm">
+                                        <button type="button" onClick={onClose} className={`w-full px-4 py-3.5 ${tombolBiru}`}>
                                             Selesai
                                         </button>
                                     </Reveal>
@@ -1287,7 +809,7 @@ export default function VisitorProfileModal({
                     style={{
                         background: OVERLAY_BG,
                         opacity: phase === 'moving' ? 0 : 1,
-                        transition: 'opacity .7s ease .1s',
+                        transition: 'opacity .35s ease',
                         pointerEvents: phase === 'moving' ? 'none' : 'auto',
                         cursor: phase === 'intro' ? 'pointer' : 'default',
                     }}
@@ -1546,7 +1068,7 @@ export default function VisitorProfileModal({
                         transformOrigin: '0 0',
                         transform: emblemTransform,
                         transition:
-                            phase === 'moving' ? 'transform .9s cubic-bezier(.7,0,.2,1)' : 'none',
+                            phase === 'moving' ? `transform ${MOVE_MS}ms cubic-bezier(.55,0,1,.45)` : 'none',
                         willChange: 'transform',
                     }}
                 >
@@ -1572,7 +1094,7 @@ export default function VisitorProfileModal({
                                         : undefined
                                 }
                             >
-                                <Emblem
+                                <IntroEmblem
                                     src={emblemSrc}
                                     alt={`Rank ${anggota.rank || ''}`}
                                     cors={emblemCors}

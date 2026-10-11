@@ -21,7 +21,7 @@ import {
   Plus,
   CornerDownLeft,
 } from 'lucide-react';
-import VisitorProfileModal, { ProfileTarget } from './VisitorProfileModal';
+import VisitorProfileModal, { ProfileTarget } from './i-VisitorProfileModal';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';

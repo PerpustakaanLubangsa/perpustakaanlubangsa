@@ -77,6 +77,59 @@ export type Variant = 'up' | 'left' | 'right' | 'zoom' | 'pop' | 'flip' | 'fade'
 export const COLOR_BACA = '#3b82f6';
 export const COLOR_PINJAM = '#06b6d4';
 
+/* ---------- Rank ----------
+ * Ambang ini harus sama dengan fungsi trg_func_proses_kalkulasi_anggota() di Supabase.
+ * Urut dari terendah ke tertinggi. total_poin = total_kunjungan + poin_tambahan.
+ */
+export interface RankLevel {
+    nama: string;
+    min: number;
+}
+
+export const RANK_LEVELS: RankLevel[] = [
+    { nama: 'WARRIOR', min: 0 },
+    { nama: 'ELITE', min: 5 },
+    { nama: 'MASTER', min: 10 },
+    { nama: 'GRANDMASTER', min: 20 },
+    { nama: 'EPIC', min: 30 },
+    { nama: 'LEGEND', min: 40 },
+    { nama: 'MYTHIC', min: 50 },
+    { nama: 'HONOR', min: 60 },
+    { nama: 'GLORY', min: 80 },
+    { nama: 'IMMORTAL', min: 100 },
+    { nama: 'ASURA', min: 150 },
+    { nama: 'ANUBIS', min: 200 },
+    { nama: 'POSEIDON', min: 250 },
+    { nama: 'ODIN', min: 300 },
+    { nama: 'LUCIFER', min: 350 },
+    { nama: 'FALAK', min: 400 },
+    { nama: 'GABRIEL', min: 500 },
+];
+
+export interface ProgresRank {
+    sekarang: RankLevel;
+    berikutnya: RankLevel | null;
+    /** Poin yang masih dibutuhkan untuk rank berikutnya (0 bila sudah rank tertinggi) */
+    sisa: number;
+    /** Persentase 0-100 dari rentang rank sekarang menuju rank berikutnya */
+    persen: number;
+}
+
+export function hitungProgresRank(poin: number): ProgresRank {
+    const p = Math.max(0, poin);
+    let idx = 0;
+    for (let i = 0; i < RANK_LEVELS.length; i++) {
+        if (p >= RANK_LEVELS[i].min) idx = i;
+    }
+    const sekarang = RANK_LEVELS[idx];
+    const berikutnya = RANK_LEVELS[idx + 1] ?? null;
+    if (!berikutnya) return { sekarang, berikutnya: null, sisa: 0, persen: 100 };
+
+    const rentang = berikutnya.min - sekarang.min;
+    const persen = rentang > 0 ? ((p - sekarang.min) / rentang) * 100 : 100;
+    return { sekarang, berikutnya, sisa: berikutnya.min - p, persen: Math.min(100, Math.max(0, persen)) };
+}
+
 export function formatWaktu(iso: string) {
     try {
         return new Date(iso).toLocaleString('id-ID', {

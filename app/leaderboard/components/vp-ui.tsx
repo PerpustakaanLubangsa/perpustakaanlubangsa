@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Loader2, Search, X } from 'lucide-react';
-import type { Variant } from './vp-types';
+import { hitungProgresRank, type Variant } from './vp-types';
 import { CountUp, rvProps, useReveal } from './vp-reveal';
 
 /* ---------- Tombol: satu-satunya elemen yang timbul. Sudut bulat; turun saat disentuh/diklik ---------- */
@@ -109,6 +109,70 @@ export function BawahDaftar({
             ) : (
                 <p className="text-xs text-slate-400">{selesai}</p>
             )}
+        </div>
+    );
+}
+
+/* ---------- Indikator poin menuju rank berikutnya ---------- */
+export function RankProgress({ poin, className = '' }: { poin: number; className?: string }) {
+    const { ref, inView, lite } = useReveal<HTMLDivElement>();
+    const p = rvProps(inView, lite, 'up', 0);
+    const info = hitungProgresRank(poin);
+    const isi = info.berikutnya ? info.persen : 100;
+    const nyala = inView || lite;
+
+    return (
+        <div
+            ref={ref}
+            className={`${p.className} w-full max-w-xl rounded-2xl border border-slate-200 bg-white px-5 py-4 ${className}`}
+            style={p.style}
+        >
+            <div className="flex items-baseline justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-600">
+                    {info.berikutnya ? (
+                        <>
+                            Tinggal{' '}
+                            <span className="font-extrabold tabular-nums text-blue-600">
+                                {info.sisa.toLocaleString('id-ID')}
+                            </span>{' '}
+                            poin lagi menuju{' '}
+                            <span className="font-extrabold uppercase tracking-wide text-slate-800">
+                                {info.berikutnya.nama}
+                            </span>
+                        </>
+                    ) : (
+                        'Rank tertinggi sudah tercapai'
+                    )}
+                </p>
+                {info.berikutnya && (
+                    <span className="shrink-0 text-xs font-bold tabular-nums text-slate-400">
+                        {Math.max(0, poin).toLocaleString('id-ID')} / {info.berikutnya.min.toLocaleString('id-ID')}
+                    </span>
+                )}
+            </div>
+
+            <div
+                role="progressbar"
+                aria-label="Progres menuju rank berikutnya"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(isi)}
+                className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-blue-100"
+            >
+                <div
+                    className="h-full origin-left rounded-full bg-gradient-to-r from-blue-500 to-blue-700"
+                    style={{
+                        width: `${isi}%`,
+                        transform: nyala ? 'scaleX(1)' : 'scaleX(0)',
+                        transition: lite ? 'none' : 'transform 1s cubic-bezier(.2,.8,.2,1) .25s',
+                    }}
+                />
+            </div>
+
+            <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                <span>{info.sekarang.nama}</span>
+                {info.berikutnya && <span>{info.berikutnya.nama}</span>}
+            </div>
         </div>
     );
 }
