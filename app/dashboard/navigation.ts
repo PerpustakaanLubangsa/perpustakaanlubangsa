@@ -58,7 +58,6 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
   {
     groupName: 'Karya Tulis',
     items: [
-      { id: 18, label: 'Karya', icon: 'pen-nib', page_url: '/dashboard/karya', roles: SEMUA },
       { id: 19, label: 'Admin Karya', icon: 'feather-pointed', page_url: '/dashboard/admin_karya', roles: SEMUA },
       { id: 20, label: 'Poin Tambahan', icon: 'circle-dollar-to-slot', page_url: '/dashboard/poin', roles: ADMIN },
     ],
@@ -76,15 +75,12 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
     items: [
       { id: 7, label: 'Scanner', icon: 'qrcode', page_url: '/dashboard/audit-scanner', roles: SEMUA },
       { id: 8, label: 'Hasil Audit', icon: 'square-poll-vertical', page_url: '/dashboard/audit-hasil', roles: SEMUA },
-      { id: 9, label: 'Belum Audit', icon: 'folder-minus', page_url: '/dashboard/audit-belum', roles: SEMUA },
     ],
   },
   {
     groupName: 'Sistem',
     items: [
       { id: 5, label: 'Manage Absen', icon: 'user-gear', page_url: '/dashboard/manajemen-absensi', roles: ADMIN },
-      { id: 21, label: 'Pendaftaran Pustakawan', icon: 'shield-halved', page_url: '/dashboard/pendaftaran-pustakawan', roles: ADMIN },
-      { id: 22, label: 'Feedback', icon: 'comment-dots', page_url: '/dashboard/admin_feedback', roles: ADMIN },
       { id: 23, label: 'Tentang', icon: 'circle-info', page_url: '/dashboard/about', roles: SEMUA },
     ],
   },

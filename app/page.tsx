@@ -8,6 +8,9 @@ import {
   BookOpenText,
   ArrowUp,
   MapPin,
+  Eye,
+  BookMarked,
+  Flame,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import BookDetailModal from './components/book-detail-modal';
@@ -58,8 +61,43 @@ const SCROLL_TOP_THRESHOLD = 400;
 // Jumlah maksimum rak yang ditampilkan di kartu (sisanya jadi "+N")
 const MAX_RAK_SHOWN = 2;
 
+// Kolom hasil penjumlahan jumlah_baca + jumlah_pinjam (kolom generated di tabel biblio).
+// Dipakai untuk mengurutkan katalog dari yang paling banyak disentuh pengunjung.
+const KOLOM_TOTAL = 'total_interaksi';
+
 const BOOK_COLUMNS =
-  'id, judul, penulis, isbn_issn, penerbit, tahun_terbit, deskripsi_fisik, sampul_url, abstrak, kategori, topik, created_at, updated_at, jumlah_baca, jumlah_pinjam';
+  'id, judul, penulis, isbn_issn, penerbit, tahun_terbit, deskripsi_fisik, sampul_url, abstrak, kategori, topik, created_at, updated_at, jumlah_baca, jumlah_pinjam, total_interaksi';
+
+// Animasi api: bergoyang dan berdenyut dari pangkal ikon, seperti nyala api.
+// Dimatikan otomatis bagi pengguna yang memilih "kurangi gerakan".
+const API_CSS = `
+  @keyframes api-menyala {
+    0%, 100% { transform: scale(1, 1) rotate(-5deg); }
+    20%      { transform: scale(1.1, 1.22) rotate(4deg) translateY(-0.5px); }
+    40%      { transform: scale(0.93, 1.05) rotate(-3deg); }
+    60%      { transform: scale(1.12, 1.26) rotate(5deg) translateY(-0.5px); }
+    80%      { transform: scale(0.97, 1.1) rotate(-4deg); }
+  }
+  @keyframes api-cahaya {
+    0%, 100% { filter: drop-shadow(0 0 1px rgba(253, 224, 71, 0.5)); }
+    50%      { filter: drop-shadow(0 0 4px rgba(253, 224, 71, 0.95)); }
+  }
+  .api-bergerak {
+    transform-origin: 50% 90%;
+    animation:
+      api-menyala 0.9s ease-in-out infinite,
+      api-cahaya 1.3s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .api-bergerak { animation: none; }
+  }
+`;
+
+// Total sentuhan pengunjung = dibaca + dipinjam
+const totalSentuhan = (b: { jumlah_baca?: number | null; jumlah_pinjam?: number | null }) =>
+  (b.jumlah_baca ?? 0) + (b.jumlah_pinjam ?? 0);
+
+const fmt = (n: number) => n.toLocaleString('id-ID');
 
 // Ambil & hitung eksemplar (jumlah tersedia + daftar rak) untuk sekumpulan buku sekaligus (1 query)
 async function fetchStockMap(bookIds: string[]): Promise<Map<string, StockInfo>> {
@@ -191,7 +229,7 @@ const ScrollToTopButton = memo(function ScrollToTopButton() {
   );
 });
 
-// Label status di pojok sampul:
+// Label status di pojok kiri atas sampul:
 // - "Tersedia · N" (hijau) jika masih ada eksemplar tersedia, N = jumlah tersedia
 // - "Dipinjam" (kuning) jika semua eksemplar sedang dipinjam
 // - "Belum ada eksemplar" (abu-abu) jika belum ada data eksemplar
@@ -225,6 +263,53 @@ const StatusBadge = memo(function StatusBadge({ book }: { book: Book }) {
     >
       {content}
     </span>
+  );
+});
+
+// Label total disentuh di pojok kanan atas sampul (api bergerak bila total > 0)
+const TotalBadge = memo(function TotalBadge({ book }: { book: Book }) {
+  const total = totalSentuhan(book);
+  const aktif = total > 0;
+
+  return (
+    <span
+      title={`Disentuh pengunjung ${fmt(total)} kali (dibaca + dipinjam)`}
+      aria-label={`Disentuh pengunjung ${fmt(total)} kali`}
+      className={`absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold tracking-wide shadow-md ${
+        aktif
+          ? 'bg-gradient-to-br from-orange-500 to-red-500 text-white'
+          : 'bg-slate-500/90 text-white'
+      }`}
+    >
+      <Flame
+        className={`h-3.5 w-3.5 ${aktif ? 'api-bergerak text-yellow-200' : ''}`}
+        strokeWidth={2.4}
+        fill={aktif ? 'currentColor' : 'none'}
+      />
+      {fmt(total)}
+    </span>
+  );
+});
+
+// Statistik rinci: dibaca dan dipinjam
+const StatSentuhan = memo(function StatSentuhan({ book }: { book: Book }) {
+  const baca = book.jumlah_baca ?? 0;
+  const pinjam = book.jumlah_pinjam ?? 0;
+
+  return (
+    <div
+      className="mt-2 flex items-center gap-3 text-[11px] font-medium text-slate-500"
+      title={`Dibaca ${fmt(baca)} kali, dipinjam ${fmt(pinjam)} kali`}
+    >
+      <span className="inline-flex items-center gap-1">
+        <Eye className="h-3 w-3 shrink-0 text-blue-500" strokeWidth={2.2} />
+        {fmt(baca)} dibaca
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <BookMarked className="h-3 w-3 shrink-0 text-blue-500" strokeWidth={2.2} />
+        {fmt(pinjam)} dipinjam
+      </span>
+    </div>
   );
 });
 
@@ -292,6 +377,9 @@ const BookCard = memo(
 
             {/* Label status ketersediaan (pojok kiri atas sampul) */}
             <StatusBadge book={book} />
+
+            {/* Label total disentuh (pojok kanan atas sampul) */}
+            <TotalBadge book={book} />
           </div>
 
           {/* Informasi Buku */}
@@ -315,6 +403,9 @@ const BookCard = memo(
               <p className="text-xs sm:text-[13px] text-slate-600 mt-1.5 truncate font-medium">
                 {book.penulis || 'Anonim'}
               </p>
+
+              {/* Statistik dibaca / dipinjam */}
+              <StatSentuhan book={book} />
 
               {/* Informasi lokasi rak */}
               <RakInfo book={book} />
@@ -342,6 +433,10 @@ export default function HomePage() {
   const observer = useRef<IntersectionObserver | null>(null);
   const pageRef = useRef(0);
   const requestIdRef = useRef(0);
+
+  // Hasil pencarian (sudah diurutkan) disimpan sementara supaya halaman berikutnya
+  // tidak mengambil ulang seluruh hasil dari server.
+  const searchCacheRef = useRef<{ key: string; rows: any[] } | null>(null);
 
   // Ambil list Kategori Unik
   useEffect(() => {
@@ -383,24 +478,44 @@ export default function HomePage() {
         let data: any[] | null = null;
 
         if (search) {
-          // Pencarian judul + penulis + topik lewat fungsi SQL search_biblio
-          let query = supabase
-            .rpc('search_biblio', { q: search, lim: SEARCH_MAX_RESULTS })
-            .range(from, to);
+          // Pencarian judul + penulis + topik lewat fungsi SQL search_biblio.
+          // Seluruh hasil (maks. SEARCH_MAX_RESULTS) diambil sekali, diurutkan dari
+          // total baca + pinjam terbanyak, lalu dipotong per halaman di sini.
+          const cacheKey = `${search}||${category}`;
+          let sorted: any[];
 
-          if (category !== 'Semua') {
-            query = query.eq('kategori', category);
+          if (!isNewSearch && searchCacheRef.current?.key === cacheKey) {
+            sorted = searchCacheRef.current.rows;
+          } else {
+            let query: any = supabase.rpc('search_biblio', { q: search, lim: SEARCH_MAX_RESULTS });
+
+            if (category !== 'Semua') {
+              query = query.eq('kategori', category);
+            }
+
+            const res = await query;
+            if (res.error) throw res.error;
+
+            // Sort bawaan JavaScript stabil: yang totalnya sama tetap dalam urutan relevansi
+            sorted = [...((res.data as any[] | null) ?? [])].sort(
+              (a, b) => totalSentuhan(b) - totalSentuhan(a)
+            );
+
+            if (requestId === requestIdRef.current) {
+              searchCacheRef.current = { key: cacheKey, rows: sorted };
+            }
           }
 
-          const res = await query;
-          if (res.error) throw res.error;
-          data = res.data as any[] | null;
+          data = sorted.slice(from, to + 1);
         } else {
-          // Tanpa kata kunci: daftar koleksi terbaru
+          // Tanpa kata kunci: paling banyak disentuh pengunjung di atas.
+          // created_at dan id sebagai pembanding agar urutan stabil saat paginasi.
           let query = supabase
             .from('biblio')
             .select(BOOK_COLUMNS)
+            .order(KOLOM_TOTAL, { ascending: false, nullsFirst: false })
             .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
             .range(from, to);
 
           if (category !== 'Semua') {
@@ -432,6 +547,8 @@ export default function HomePage() {
             const stock = stockMap.get(b.id);
             return {
               ...b,
+              jumlah_baca: b.jumlah_baca ?? 0,
+              jumlah_pinjam: b.jumlah_pinjam ?? 0,
               topik: Array.isArray(b.topik) ? b.topik : [],
               eks_total: stock?.total,
               eks_tersedia: stock?.tersedia,
@@ -523,6 +640,8 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white text-slate-900 antialiased">
+      <style>{API_CSS}</style>
+
       {/* --- HEADER + HERO + PENCARIAN --- */}
       <HeroSearch
         categories={categories}
@@ -548,6 +667,14 @@ export default function HomePage() {
               {hasMore ? '+' : ''}
             </p>
           </div>
+        )}
+
+        {/* Keterangan urutan */}
+        {books.length > 0 && (
+          <p className="mb-4 flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <Flame className="api-bergerak h-3.5 w-3.5 text-orange-500" strokeWidth={2.2} />
+            Diurutkan dari yang paling banyak disentuh pengunjung (dibaca + dipinjam)
+          </p>
         )}
 
         {/* Kondisi Jika Buku Tidak Ditemukan */}
