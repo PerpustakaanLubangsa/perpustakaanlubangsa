@@ -54,6 +54,25 @@ interface BookFormModalProps {
   eksemplarList?: Eksemplar[];
 }
 
+type TextFieldName =
+  | 'judul'
+  | 'penulis'
+  | 'kategori'
+  | 'isbn_issn'
+  | 'penerbit'
+  | 'tahun_terbit'
+  | 'deskripsi_fisik'
+  | 'sampul_url';
+
+interface FieldConfig {
+  name: TextFieldName;
+  label: string;
+  placeholder: string;
+  type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
+  required?: boolean;
+}
+
 /* ───────────────────────── Konstanta ───────────────────────── */
 
 const initialFormState: Book = {
@@ -69,33 +88,24 @@ const initialFormState: Book = {
   topik: [],
 };
 
-type TextFieldName =
-  | 'judul'
-  | 'penulis'
-  | 'kategori'
-  | 'isbn_issn'
-  | 'penerbit'
-  | 'tahun_terbit'
-  | 'deskripsi_fisik'
-  | 'sampul_url';
+const EMPTY_EKSEMPLAR: Eksemplar[] = [];
 
-// Field berbentuk data, bukan JSX yang diulang 8 kali.
-// Field "kategori" dirender sebagai dropdown (KategoriSelect), bukan input teks.
-const FIELDS: {
-  name: TextFieldName;
-  label: string;
-  placeholder: string;
-  type?: string;
-  required?: boolean;
-}[] = [
+// Field berbentuk data. "kategori" dirender sebagai dropdown (KategoriSelect).
+const FIELDS: FieldConfig[] = [
   { name: 'judul', label: 'Judul Buku *', placeholder: 'Masukkan judul lengkap buku', required: true },
   { name: 'penulis', label: 'Penulis / Pengarang', placeholder: 'Nama penulis' },
   { name: 'kategori', label: 'Kategori Buku', placeholder: 'Pilih kategori buku' },
   { name: 'isbn_issn', label: 'ISBN / ISSN', placeholder: '978-xxx-xxx-x' },
   { name: 'penerbit', label: 'Penerbit', placeholder: 'Nama perusahaan penerbit' },
-  { name: 'tahun_terbit', label: 'Tahun Terbit', placeholder: 'Contoh: 2024' },
+  { name: 'tahun_terbit', label: 'Tahun Terbit', placeholder: 'Contoh: 2024', inputMode: 'numeric' },
   { name: 'deskripsi_fisik', label: 'Deskripsi Fisik', placeholder: 'Contoh: xx, 240 hlm; 21 cm' },
-  { name: 'sampul_url', label: 'URL Gambar Sampul', placeholder: 'https://example.com/gambar.jpg', type: 'url' },
+  {
+    name: 'sampul_url',
+    label: 'URL Gambar Sampul',
+    placeholder: 'https://example.com/gambar.jpg',
+    type: 'url',
+    inputMode: 'url',
+  },
 ];
 
 const INPUT_CLS =
@@ -110,16 +120,93 @@ const MODAL_CSS = `
   @media (prefers-reduced-motion: reduce) { .modal-in { animation: none; } }
 `;
 
-const cleanTag = (value: string) => value.trim().replace(/,/g, '');
+const COVER_DEBOUNCE_MS = 400;
+const HTTP_URL_RE = /^https?:\/\//i;
+
+/* ───────────────────────── Helper murni ───────────────────────── */
+
+/** Ubah data dari server (bisa null) menjadi state form yang aman. */
+const toFormState = (book: Book | null): Book => {
+  if (!book) return initialFormState;
+  const next: Book = { ...book };
+  for (const f of FIELDS) next[f.name] = book[f.name] ?? '';
+  next.abstrak = book.abstrak ?? '';
+  next.topik = book.topik ?? [];
+  return next;
+};
+
+const normalizeTag = (value: string) => value.replace(/\s+/g, ' ').trim();
+
+/** Pisahkan teks menjadi tag berdasarkan koma (mendukung paste "a, b, c"). */
+const splitTags = (raw: string) => raw.split(',').map(normalizeTag).filter(Boolean);
+
+/** Gabungkan tag baru tanpa duplikat (case-insensitive). Mengembalikan array lama bila tidak berubah. */
+const mergeTags = (current: string[], raw: string) => {
+  const seen = new Set(current.map((t) => t.toLowerCase()));
+  const next = [...current];
+  for (const tag of splitTags(raw)) {
+    const key = tag.toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      next.push(tag);
+    }
+  }
+  return next.length === current.length ? current : next;
+};
+
+/* ───────────────────────── Pratinjau sampul (memoized) ───────────────────────── */
+
+const CoverPreview = memo(function CoverPreview({ url }: { url: string }) {
+  const [debouncedUrl, setDebouncedUrl] = useState(url.trim());
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+
+  // Debounce supaya gambar tidak dimuat ulang di setiap ketikan
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedUrl(url.trim()), COVER_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [url]);
+
+  const isValid = HTTP_URL_RE.test(debouncedUrl);
+  const failed = failedUrl === debouncedUrl;
+  const showCover = isValid && !failed;
+
+  return (
+    <div>
+      <span className="text-xs font-bold text-slate-600 mb-2.5 block">Pratinjau Sampul</span>
+      <div className="w-full aspect-[3/4] max-w-[160px] mx-auto bg-white rounded-xl overflow-hidden border border-blue-100 flex items-center justify-center">
+        {showCover ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={debouncedUrl}
+            alt="Pratinjau sampul"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setFailedUrl(debouncedUrl)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-blue-300 p-4 text-center">
+            <ImageIcon className="h-7 w-7 stroke-[1.2]" />
+            <span className="text-[10px] text-slate-500">
+              {failed ? 'Gambar tidak dapat dimuat' : 'Belum ada URL gambar'}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+});
 
 /* ───────────────────────── Item eksemplar (memoized) ───────────────────────── */
 
 const EksemplarItem = memo(function EksemplarItem({
   item,
+  isDeleting,
   onEdit,
   onDelete,
 }: {
   item: Eksemplar;
+  isDeleting: boolean;
   onEdit: (item: Eksemplar) => void;
   onDelete: (id?: string) => void;
 }) {
@@ -155,6 +242,7 @@ const EksemplarItem = memo(function EksemplarItem({
         <button
           type="button"
           onClick={() => onEdit(item)}
+          disabled={isDeleting}
           aria-label={`Edit eksemplar ${item.kode}`}
           className={`p-1.5 rounded-md ${BTN_EDIT}`}
         >
@@ -163,12 +251,60 @@ const EksemplarItem = memo(function EksemplarItem({
         <button
           type="button"
           onClick={() => onDelete(item.id)}
+          disabled={isDeleting}
           aria-label={`Hapus eksemplar ${item.kode}`}
           className={`p-1.5 rounded-md ${BTN_DELETE}`}
         >
-          <Trash2 className="h-3 w-3" />
+          {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
         </button>
       </div>
+    </div>
+  );
+});
+
+/* ───────────────────────── Field form (memoized) ───────────────────────── */
+// Hanya field yang nilainya berubah yang dirender ulang saat mengetik.
+
+const FormField = memo(function FormField({
+  field,
+  value,
+  disabled,
+  autoFocus,
+  onInputChange,
+  onKategoriChange,
+}: {
+  field: FieldConfig;
+  value: string;
+  disabled: boolean;
+  autoFocus?: boolean;
+  onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onKategoriChange: (value: string) => void;
+}) {
+  const inputId = `field-${field.name}`;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={inputId} className={LABEL_CLS}>
+        {field.label}
+      </label>
+
+      {field.name === 'kategori' ? (
+        <KategoriSelect id={inputId} value={value} onChange={onKategoriChange} disabled={disabled} />
+      ) : (
+        <input
+          id={inputId}
+          type={field.type ?? 'text'}
+          inputMode={field.inputMode}
+          name={field.name}
+          required={field.required}
+          autoFocus={autoFocus}
+          autoComplete="off"
+          value={value}
+          onChange={onInputChange}
+          placeholder={field.placeholder}
+          className={INPUT_CLS}
+        />
+      )}
     </div>
   );
 });
@@ -182,18 +318,39 @@ export default function BookFormModal({
   bookToEdit,
   onSubmitEksemplar,
   onDeleteEksemplar,
-  eksemplarList = [],
+  eksemplarList = EMPTY_EKSEMPLAR,
 }: BookFormModalProps) {
   const [formData, setFormData] = useState<Book>(initialFormState);
   const [topikTags, setTopikTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [coverFailed, setCoverFailed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [isEksemplarModalOpen, setIsEksemplarModalOpen] = useState(false);
   const [eksemplarToEdit, setEksemplarToEdit] = useState<Eksemplar | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  /* Isi / reset form saat modal dibuka atau buku yang diedit berganti.
+     Dilakukan saat render (bukan di effect) agar tidak ada kedipan data lama,
+     dan form TIDAK ikut ter-reset ketika parent hanya mengirim ulang objek
+     bookToEdit yang sama (mis. setelah refetch daftar eksemplar). */
+  const syncKey = isOpen ? (bookToEdit?.id ?? 'new') : null;
+  const [prevSyncKey, setPrevSyncKey] = useState<string | null>(null);
+  if (syncKey !== prevSyncKey) {
+    setPrevSyncKey(syncKey);
+    setIsEksemplarModalOpen(false);
+    if (syncKey !== null) {
+      setFormData(toFormState(bookToEdit));
+      setTopikTags(bookToEdit?.topik ?? []);
+      setTagInput('');
+      setError(null);
+      setEksemplarToEdit(null);
+    }
+  }
 
   /* Kunci scroll halaman belakang, pulihkan nilai aslinya saat tutup */
   useEffect(() => {
@@ -213,28 +370,11 @@ export default function BookFormModal({
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isEksemplarModalOpen && !isSubmitting) onClose();
+      if (e.key === 'Escape' && !isEksemplarModalOpen && !isSubmitting) onCloseRef.current();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, isEksemplarModalOpen, isSubmitting, onClose]);
-
-  /* Isi form saat modal dibuka atau buku yang diedit berganti */
-  useEffect(() => {
-    if (bookToEdit) {
-      setFormData(bookToEdit);
-      setTopikTags(bookToEdit.topik || []);
-    } else {
-      setFormData(initialFormState);
-      setTopikTags([]);
-    }
-    setTagInput('');
-  }, [bookToEdit, isOpen]);
-
-  /* Reset status error pratinjau saat URL sampul berubah */
-  useEffect(() => {
-    setCoverFailed(false);
-  }, [formData.sampul_url]);
+  }, [isOpen, isEksemplarModalOpen, isSubmitting]);
 
   /* Tinggi textarea mengikuti isi */
   useEffect(() => {
@@ -246,51 +386,96 @@ export default function BookFormModal({
 
   /* ───────────── Handler ───────────── */
 
+  const requestClose = useCallback(() => {
+    if (!isSubmitting) onCloseRef.current();
+  }, [isSubmitting]);
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => (prev[name as TextFieldName | 'abstrak'] === value ? prev : { ...prev, [name]: value }));
   }, []);
 
-  // Nilai kategori disimpan sebagai nama kategori (teks), sama seperti sebelumnya
+  // Nilai kategori disimpan sebagai nama kategori (teks)
   const handleKategoriChange = useCallback((value: string) => {
-    setFormData((prev) => ({ ...prev, kategori: value }));
+    setFormData((prev) => (prev.kategori === value ? prev : { ...prev, kategori: value }));
   }, []);
 
-  const handleKeyDownTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      const value = cleanTag(tagInput);
-      if (value) setTopikTags((prev) => (prev.includes(value) ? prev : [...prev, value]));
+  const commitTag = useCallback(() => {
+    setTopikTags((prev) => mergeTags(prev, tagInput));
+    setTagInput('');
+  }, [tagInput]);
+
+  const handleTagInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const { value } = e.target;
+    if (value.includes(',')) {
+      // Koma (ketik maupun paste) langsung memecah menjadi tag
+      setTopikTags((prev) => mergeTags(prev, value));
       setTagInput('');
-    } else if (e.key === 'Backspace' && !tagInput) {
-      setTopikTags((prev) => prev.slice(0, -1));
+    } else {
+      setTagInput(value);
     }
-  };
+  }, []);
 
-  const removeTag = (index: number) => {
-    setTopikTags((prev) => prev.filter((_, i) => i !== index));
-  };
+  const handleKeyDownTag = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        if (e.nativeEvent.isComposing) return; // jangan ganggu input IME
+        e.preventDefault(); // cegah submit form
+        commitTag();
+      } else if (e.key === 'Backspace' && !tagInput) {
+        setTopikTags((prev) => (prev.length ? prev.slice(0, -1) : prev));
+      }
+    },
+    [commitTag, tagInput]
+  );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-    setIsSubmitting(true);
+  const removeTag = useCallback((tag: string) => {
+    setTopikTags((prev) => prev.filter((t) => t !== tag));
+  }, []);
 
-    const tags = [...topikTags];
-    const pending = cleanTag(tagInput);
-    if (pending && !tags.includes(pending)) tags.push(pending);
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (isSubmitting) return;
 
-    const { created_at, updated_at, ...cleanFormData } = formData;
+      const judul = formData.judul.trim();
+      if (!judul) {
+        setError('Judul buku wajib diisi.');
+        return;
+      }
 
-    try {
-      await onSubmit({ ...cleanFormData, kategori: cleanFormData.kategori ?? '', topik: tags });
-      onClose();
-    } catch (error) {
-      console.error('Error saat menyimpan form:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+      setError(null);
+      setIsSubmitting(true);
+
+      // Payload eksplisit: hanya field yang memang diedit user.
+      // created_at, updated_at, jumlah_baca, jumlah_pinjam tidak dikirim
+      // agar nilai lama/stale tidak menimpa data di server.
+      const payload = {
+        ...(formData.id ? { id: formData.id } : {}),
+        judul,
+        penulis: formData.penulis.trim(),
+        isbn_issn: formData.isbn_issn.trim(),
+        penerbit: formData.penerbit.trim(),
+        tahun_terbit: formData.tahun_terbit.trim(),
+        deskripsi_fisik: formData.deskripsi_fisik.trim(),
+        sampul_url: formData.sampul_url.trim(),
+        abstrak: formData.abstrak.trim(),
+        kategori: formData.kategori ?? '',
+        topik: mergeTags(topikTags, tagInput), // tag yang belum di-Enter ikut tersimpan
+      };
+
+      try {
+        await onSubmit(payload);
+        onCloseRef.current();
+      } catch (err) {
+        console.error('Error saat menyimpan form:', err);
+        setError('Gagal menyimpan data. Silakan coba lagi.');
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [formData, isSubmitting, onSubmit, tagInput, topikTags]
+  );
 
   const handleOpenAddEksemplar = useCallback(() => {
     setEksemplarToEdit(null);
@@ -302,32 +487,43 @@ export default function BookFormModal({
     setIsEksemplarModalOpen(true);
   }, []);
 
+  const handleCloseEksemplar = useCallback(() => setIsEksemplarModalOpen(false), []);
+
   const handleDeleteEksemplar = useCallback(
-    (id?: string) => {
-      if (id) onDeleteEksemplar?.(id);
+    async (id?: string) => {
+      if (!id || !onDeleteEksemplar) return;
+      if (!window.confirm('Hapus eksemplar ini? Tindakan ini tidak dapat dibatalkan.')) return;
+
+      setError(null);
+      setDeletingId(id);
+      try {
+        await onDeleteEksemplar(id);
+      } catch (err) {
+        console.error('Error saat menghapus eksemplar:', err);
+        setError('Gagal menghapus eksemplar. Silakan coba lagi.');
+      } finally {
+        setDeletingId(null);
+      }
     },
     [onDeleteEksemplar]
   );
 
-  const handleCloseEksemplar = useCallback(() => setIsEksemplarModalOpen(false), []);
-
   if (!isOpen) return null;
 
-  const showCover = formData.sampul_url && !coverFailed;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
       <style>{MODAL_CSS}</style>
 
       {/* Backdrop: satu lapis warna, tanpa blur */}
-      <div className="absolute inset-0 bg-slate-900/50" onClick={isSubmitting ? undefined : onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-slate-900/50" onClick={requestClose} aria-hidden="true" />
 
       {/* Kontainer utama */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="book-form-title"
-        className="modal-in relative bg-white w-full max-w-5xl h-[90vh] rounded-2xl overflow-hidden flex flex-col border border-blue-100 shadow-xl"
+        aria-busy={isSubmitting}
+        className="modal-in relative bg-white w-full max-w-5xl h-[90dvh] rounded-2xl overflow-hidden flex flex-col border border-blue-100 shadow-xl"
       >
         {/* Header */}
         <header className="px-6 py-4 bg-blue-50 border-b border-blue-100 flex items-center justify-between shrink-0">
@@ -336,7 +532,8 @@ export default function BookFormModal({
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
+            disabled={isSubmitting}
             aria-label="Tutup"
             className={`p-1.5 rounded-lg ${BTN_EDIT}`}
           >
@@ -344,30 +541,13 @@ export default function BookFormModal({
           </button>
         </header>
 
-        <div className="flex-1 min-h-0 grid grid-cols-3">
+        {/* Mobile: satu kolom & bisa di-scroll. Desktop: 3 kolom, scroll di tiap panel. */}
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-3 md:grid-rows-1 overflow-y-auto md:overflow-hidden">
           {/* Sisi kiri: sampul & eksemplar */}
-          <aside className={`p-5 bg-blue-50 border-r border-blue-100 flex flex-col gap-5 overflow-y-auto ${SCROLL_CLS}`}>
-            <div>
-              <span className="text-xs font-bold text-slate-600 mb-2.5 block">Pratinjau Sampul</span>
-              <div className="w-full aspect-[3/4] max-w-[160px] mx-auto bg-white rounded-xl overflow-hidden border border-blue-100 flex items-center justify-center">
-                {showCover ? (
-                  <img
-                    src={formData.sampul_url}
-                    alt="Pratinjau sampul"
-                    decoding="async"
-                    onError={() => setCoverFailed(true)}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-blue-300 p-4 text-center">
-                    <ImageIcon className="h-7 w-7 stroke-[1.2]" />
-                    <span className="text-[10px] text-slate-500">
-                      {coverFailed ? 'Gambar tidak dapat dimuat' : 'Belum ada URL gambar'}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
+          <aside
+            className={`p-5 bg-blue-50 border-b md:border-b-0 md:border-r border-blue-100 flex flex-col gap-5 md:overflow-y-auto ${SCROLL_CLS}`}
+          >
+            <CoverPreview url={formData.sampul_url} />
 
             <hr className="border-blue-100" />
 
@@ -378,7 +558,7 @@ export default function BookFormModal({
                   <Library className="h-4 w-4 text-blue-500" />
                   <span className="text-xs font-bold">Daftar Eksemplar ({eksemplarList.length})</span>
                 </div>
-                {bookToEdit && (
+                {bookToEdit && onSubmitEksemplar && (
                   <button
                     type="button"
                     onClick={handleOpenAddEksemplar}
@@ -402,8 +582,9 @@ export default function BookFormModal({
                 <div className={`space-y-2 overflow-y-auto max-h-[260px] pr-1 ${SCROLL_CLS}`}>
                   {eksemplarList.map((item, index) => (
                     <EksemplarItem
-                      key={item.id ?? index}
+                      key={item.id ?? `${item.kode}-${index}`}
                       item={item}
+                      isDeleting={!!item.id && item.id === deletingId}
                       onEdit={handleOpenEditEksemplar}
                       onDelete={handleDeleteEksemplar}
                     />
@@ -414,39 +595,19 @@ export default function BookFormModal({
           </aside>
 
           {/* Sisi kanan: form utama */}
-          <form onSubmit={handleSubmit} className="col-span-2 flex flex-col min-h-0 bg-white">
-            <div className={`flex-1 min-h-0 overflow-y-auto p-6 space-y-4 ${SCROLL_CLS}`}>
-              {FIELDS.map((field) => {
-                const inputId = `field-${field.name}`;
-
-                return (
-                  <div key={field.name} className="flex flex-col gap-1.5">
-                    <label htmlFor={inputId} className={LABEL_CLS}>
-                      {field.label}
-                    </label>
-
-                    {field.name === 'kategori' ? (
-                      <KategoriSelect
-                        id={inputId}
-                        value={formData.kategori ?? ''}
-                        onChange={handleKategoriChange}
-                        disabled={isSubmitting}
-                      />
-                    ) : (
-                      <input
-                        id={inputId}
-                        type={field.type ?? 'text'}
-                        name={field.name}
-                        required={field.required}
-                        value={formData[field.name] ?? ''}
-                        onChange={handleChange}
-                        placeholder={field.placeholder}
-                        className={INPUT_CLS}
-                      />
-                    )}
-                  </div>
-                );
-              })}
+          <form onSubmit={handleSubmit} className="md:col-span-2 flex flex-col min-h-0 bg-white">
+            <div className={`flex-1 min-h-0 md:overflow-y-auto p-6 space-y-4 ${SCROLL_CLS}`}>
+              {FIELDS.map((field) => (
+                <FormField
+                  key={field.name}
+                  field={field}
+                  value={formData[field.name] ?? ''}
+                  disabled={isSubmitting}
+                  autoFocus={field.name === 'judul' && !bookToEdit}
+                  onInputChange={handleChange}
+                  onKategoriChange={handleKategoriChange}
+                />
+              ))}
 
               {/* Topik */}
               <div className="flex flex-col gap-1.5">
@@ -454,7 +615,7 @@ export default function BookFormModal({
                   Topik Spesifik (Tekan Enter / Koma)
                 </label>
                 <div className="flex flex-wrap gap-2 p-2 bg-white border border-blue-100 rounded-xl min-h-10 transition-colors focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-500/20">
-                  {topikTags.map((tag, index) => (
+                  {topikTags.map((tag) => (
                     <span
                       key={tag}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200"
@@ -462,7 +623,7 @@ export default function BookFormModal({
                       {tag}
                       <button
                         type="button"
-                        onClick={() => removeTag(index)}
+                        onClick={() => removeTag(tag)}
                         aria-label={`Hapus topik ${tag}`}
                         className={`p-0.5 rounded ${BTN_TAG_REMOVE}`}
                       >
@@ -473,9 +634,11 @@ export default function BookFormModal({
                   <input
                     id="field-topik"
                     type="text"
+                    autoComplete="off"
                     value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
+                    onChange={handleTagInputChange}
                     onKeyDown={handleKeyDownTag}
+                    onBlur={commitTag}
                     placeholder={topikTags.length === 0 ? 'Contoh: Next.js, Database' : ''}
                     className="flex-grow min-w-[120px] text-sm font-medium bg-transparent outline-none text-slate-800 placeholder:text-slate-400 px-1 py-0.5"
                   />
@@ -492,7 +655,7 @@ export default function BookFormModal({
                   ref={textareaRef}
                   name="abstrak"
                   rows={3}
-                  value={formData.abstrak}
+                  value={formData.abstrak ?? ''}
                   onChange={handleChange}
                   placeholder="Tulis ringkasan singkat isi buku..."
                   className="p-3 text-sm font-medium bg-white border border-blue-100 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-colors resize-none overflow-hidden min-h-[80px]"
@@ -502,9 +665,14 @@ export default function BookFormModal({
 
             {/* Footer */}
             <footer className="p-4 border-t border-blue-100 bg-blue-50 flex items-center justify-end gap-3 shrink-0">
+              {error && (
+                <p role="alert" className="mr-auto text-xs font-semibold text-red-600">
+                  {error}
+                </p>
+              )}
               <button
                 type="button"
-                onClick={onClose}
+                onClick={requestClose}
                 disabled={isSubmitting}
                 className={`h-10 px-4 text-xs font-bold rounded-xl ${BTN_NEUTRAL}`}
               >
