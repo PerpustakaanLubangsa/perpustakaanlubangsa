@@ -71,13 +71,6 @@ export const NAVIGATION_GROUPS: NavGroup[] = [
     ],
   },
   {
-    groupName: 'Audit',
-    items: [
-      { id: 7, label: 'Scanner', icon: 'qrcode', page_url: '/dashboard/audit-scanner', roles: SEMUA },
-      { id: 8, label: 'Hasil Audit', icon: 'square-poll-vertical', page_url: '/dashboard/audit-hasil', roles: SEMUA },
-    ],
-  },
-  {
     groupName: 'Sistem',
     items: [
       { id: 5, label: 'Manage Absen', icon: 'user-gear', page_url: '/dashboard/manajemen-absensi', roles: ADMIN },

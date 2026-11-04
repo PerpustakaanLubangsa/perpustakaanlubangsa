@@ -60,7 +60,6 @@ interface Eksemplar {
   nomor_panggil: string;
   lokasi_rak: string;
   status: string;
-  status_audit: string;
   peminjam?: Peminjam | null;
 }
 
@@ -121,7 +120,7 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
 
       const { data: eksData, error } = await supabase
         .from('eksemplar')
-        .select('id, kode, nomor_panggil, lokasi_rak, status, status_audit')
+        .select('id, kode, nomor_panggil, lokasi_rak, status')
         .eq('biblio_id', book.id);
 
       if (cancelled) return;

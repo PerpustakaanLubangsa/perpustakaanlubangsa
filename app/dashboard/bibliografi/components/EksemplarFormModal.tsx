@@ -13,7 +13,6 @@ interface Eksemplar {
   nomor_panggil: string;
   lokasi_rak: string;
   status: string;
-  status_audit: string;
   kode: string;
   created_at?: string;
 }
@@ -42,7 +41,6 @@ const initialFormState: Eksemplar = {
   nomor_panggil: '',
   lokasi_rak: '',
   status: 'Tersedia',
-  status_audit: 'baik',
   kode: '',
 };
 
@@ -77,7 +75,6 @@ const toFormState = (item: Eksemplar | null, biblioId?: string): Eksemplar => {
     nomor_panggil: item.nomor_panggil ?? '',
     lokasi_rak: item.lokasi_rak ?? '',
     status: item.status || initialFormState.status,
-    status_audit: item.status_audit || initialFormState.status_audit,
   };
 };
 
@@ -253,7 +250,6 @@ export default function EksemplarFormModal({
         nomor_panggil: formData.nomor_panggil.trim(),
         lokasi_rak: formData.lokasi_rak ?? '',
         status: formData.status,
-        status_audit: formData.status_audit,
       };
 
       try {

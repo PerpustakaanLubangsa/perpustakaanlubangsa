@@ -48,7 +48,6 @@ interface Eksemplar {
   nomor_panggil: string;
   lokasi_rak: string;
   status: string;
-  status_audit: string;
   kode: string;
   created_at?: string;
 }
@@ -367,7 +366,7 @@ export default function BibliografiEditPage() {
     try {
       const { data, error } = await supabase
         .from('eksemplar')
-        .select('*')
+        .select('id, biblio_id, nomor_panggil, lokasi_rak, status, kode, created_at')
         .eq('biblio_id', biblioId)
         .order('created_at', { ascending: true });
 
@@ -390,7 +389,6 @@ export default function BibliografiEditPage() {
             nomor_panggil: dataEksemplar.nomor_panggil,
             lokasi_rak: dataEksemplar.lokasi_rak,
             status: dataEksemplar.status,
-            status_audit: dataEksemplar.status_audit,
             kode: dataEksemplar.kode,
           })
           .eq('id', dataEksemplar.id);

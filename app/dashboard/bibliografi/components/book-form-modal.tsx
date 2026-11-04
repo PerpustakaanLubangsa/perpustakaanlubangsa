@@ -39,7 +39,6 @@ interface Eksemplar {
   nomor_panggil: string;
   lokasi_rak: string;
   status: string;
-  status_audit: string;
   kode: string;
   created_at?: string;
 }
@@ -230,11 +229,6 @@ const EksemplarItem = memo(function EksemplarItem({
           >
             {item.status}
           </span>
-          {item.status_audit && (
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-slate-50 text-slate-600 uppercase border border-slate-200">
-              {item.status_audit}
-            </span>
-          )}
         </div>
       </div>
 
