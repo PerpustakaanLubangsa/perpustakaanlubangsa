@@ -18,11 +18,7 @@ import {
   CalendarClock,
   AlertTriangle,
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { supabase } from '@/lib/supabase';
 
 // Lama peminjaman (hari). Pinjam tgl 1 -> jatuh tempo tgl 5, tgl 6 sudah terlambat.
 const LAMA_PINJAM_HARI = 5;
@@ -101,13 +97,14 @@ function getTempoInfo(tglPinjam: string | null, today: Date) {
 export default function BookDetailModal({ book, isOpen, onClose }: BookDetailModalProps) {
   const [eksemplarList, setEksemplarList] = useState<Eksemplar[]>([]);
   const [loadingEksemplar, setLoadingEksemplar] = useState(false);
+  const [eksemplarError, setEksemplarError] = useState<string | null>(null);
+  const bookId = book?.id;
 
   // Kunci scroll background + ambil eksemplar & data peminjam
   useEffect(() => {
     document.body.style.overflow = isOpen ? 'hidden' : 'unset';
 
-    if (!(isOpen && book?.id)) {
-      setEksemplarList([]);
+    if (!(isOpen && bookId)) {
       return () => {
         document.body.style.overflow = 'unset';
       };
@@ -117,16 +114,19 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
 
     const getEksemplar = async () => {
       setLoadingEksemplar(true);
+      setEksemplarError(null);
 
       const { data: eksData, error } = await supabase
         .from('eksemplar')
         .select('id, kode, nomor_panggil, lokasi_rak, status')
-        .eq('biblio_id', book.id);
+        .eq('biblio_id', bookId);
 
       if (cancelled) return;
 
-      if (error || !eksData) {
+      if (error) {
+        console.error('Gagal mengambil data eksemplar untuk detail buku:', error);
         setEksemplarList([]);
+        setEksemplarError(error.message);
         setLoadingEksemplar(false);
         return;
       }
@@ -166,13 +166,10 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
 
           if (cancelled) return;
 
-          const anggotaByNis: Record<string, any> = {};
-          (anggotaData || []).forEach((a) => {
-            anggotaByNis[a.nis] = a;
-          });
+          const anggotaByNis = new Map((anggotaData || []).map((a) => [a.nis, a]));
 
           Object.entries(latestByKode).forEach(([kode, s]) => {
-            const a = anggotaByNis[s.nis];
+            const a = anggotaByNis.get(s.nis);
             peminjamByKode[kode] = {
               nama: a?.nama || s.nama_anggota || '-',
               organisasi: a?.organisasi ?? null,
@@ -197,7 +194,7 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
       cancelled = true;
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen, book]);
+  }, [isOpen, bookId]);
 
   // Tutup dengan tombol Escape
   useEffect(() => {
@@ -396,6 +393,10 @@ export default function BookDetailModal({ book, isOpen, onClose }: BookDetailMod
               {loadingEksemplar ? (
                 <div className="p-5 text-center text-slate-700 flex items-center justify-center gap-2 border border-blue-200 rounded-xl bg-white text-sm">
                   <Loader2 className="h-4 w-4 animate-spin text-blue-600" /> Memuat salinan...
+                </div>
+              ) : eksemplarError ? (
+                <div role="alert" className="p-5 text-center text-sm text-red-700 border border-red-200 rounded-xl bg-red-50">
+                  Gagal memuat data eksemplar: {eksemplarError}
                 </div>
               ) : eksemplarList.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
