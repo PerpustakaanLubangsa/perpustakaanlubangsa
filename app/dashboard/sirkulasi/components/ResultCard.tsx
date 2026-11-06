@@ -40,7 +40,11 @@ export interface BookSearchResult {
 
 /* ───────────────────────── Aturan peminjaman, keterlambatan & denda ───────────────────────── */
 
-/** Lama peminjaman (hari) sejak tgl_pinjam. Perpanjang = tgl_pinjam di-reset ke hari ini. */
+/**
+ * Lama peminjaman (hari). Tanggal pinjam dihitung sebagai hari ke-1.
+ * Contoh: pinjam tgl 1 -> batas kembali tgl 5 (tidak terlambat), tgl 6 sudah terlambat.
+ * Perpanjang = tgl_pinjam di-reset ke hari ini.
+ */
 export const LAMA_PINJAM_HARI = 5;
 
 /** Denda per hari keterlambatan (rupiah) */
@@ -68,7 +72,8 @@ export function tanggalHariIni(): string {
 }
 
 /**
- * Hitung tanggal jatuh tempo = tgl_pinjam + lama pinjam.
+ * Hitung tanggal jatuh tempo (batas terakhir mengembalikan tanpa denda).
+ * Lama pinjam 5 hari: pinjam tgl 1 -> batas tgl 5 (tgl pinjam dihitung hari ke-1).
  * (Jangan pakai tgl_kembali: nilainya null selama buku masih dipinjam.)
  */
 export function hitungJatuhTempo(
@@ -76,7 +81,7 @@ export function hitungJatuhTempo(
   lamaPinjamHari: number = LAMA_PINJAM_HARI
 ): Date {
   const pinjam = keTanggalLokal(tglPinjam);
-  return new Date(pinjam.getFullYear(), pinjam.getMonth(), pinjam.getDate() + lamaPinjamHari);
+  return new Date(pinjam.getFullYear(), pinjam.getMonth(), pinjam.getDate() + lamaPinjamHari - 1);
 }
 
 /**
