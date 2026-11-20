@@ -35,6 +35,9 @@ const LOAN_DAYS = 5;
 // Denda per hari keterlambatan
 const FINE_PER_DAY = 1000;
 
+// Jumlah kode eksemplar per query saat mengambil data rak (menjaga URL request tetap pendek)
+const RAK_CHUNK = 100;
+
 const DAY_MS = 86_400_000;
 
 type Scope = 'all' | 'late';
@@ -48,6 +51,7 @@ interface Loan {
   judul: string;
   penulis: string;
   kode: string;
+  rak: string; // lokasi rak eksemplar ('-' jika belum tercatat)
   tglPinjam: Date;
   jatuhTempo: Date;
   hariTerlambat: number; // 0 jika belum terlambat
@@ -168,6 +172,7 @@ function mapRow(row: any, today: Date): Loan | null {
     judul: row.judul_buku ?? '-',
     penulis: row.penulis ?? '',
     kode: row.kode_eksemplar ?? '-',
+    rak: '-',
     tglPinjam,
     jatuhTempo,
     hariTerlambat,
@@ -214,6 +219,33 @@ function buildQuery(
   return q;
 }
 
+/**
+ * Isi data rak tiap peminjam. Tabel sirkulasi tidak punya relasi ke eksemplar,
+ * jadi rak diambil terpisah dari tabel eksemplar berdasarkan kode eksemplar.
+ * Kegagalan di sini tidak boleh memblokir daftar: rak tetap '-'.
+ */
+async function attachRak(loans: Loan[]): Promise<void> {
+  const codes = Array.from(new Set(loans.map((l) => l.kode).filter((k) => k && k !== '-')));
+  if (codes.length === 0) return;
+
+  const rakByKode = new Map<string, string>();
+  try {
+    for (let i = 0; i < codes.length; i += RAK_CHUNK) {
+      const chunk = codes.slice(i, i + RAK_CHUNK);
+      const { data, error } = await supabase.from('eksemplar').select('kode, lokasi_rak').in('kode', chunk);
+      if (error) throw error;
+      for (const row of (data ?? []) as { kode: string | null; lokasi_rak: string | null }[]) {
+        const rak = (row.lokasi_rak ?? '').trim();
+        if (row.kode && rak) rakByKode.set(row.kode, rak);
+      }
+    }
+  } catch {
+    return;
+  }
+
+  for (const l of loans) l.rak = rakByKode.get(l.kode) ?? '-';
+}
+
 /** Ambil SEMUA data sesuai scope secara bertahap. Hanya dipanggil saat salin/ekspor. */
 async function fetchAllLoans(scope: Scope): Promise<Loan[]> {
   const today = new Date();
@@ -233,6 +265,7 @@ async function fetchAllLoans(scope: Scope): Promise<Loan[]> {
     }
     if (rows.length < EXPORT_BATCH) break;
   }
+  await attachRak(out);
   return out;
 }
 
@@ -242,12 +275,12 @@ async function fetchAllLoans(scope: Scope): Promise<Loan[]> {
 
 /* Tabel untuk salin & Excel (kolom dan urutan sama) */
 
-const TABLE_HEADERS = ['No', 'Nama', 'Kamar', 'Judul Buku', 'Penulis', 'Telat (Hari)', 'Denda (Rp)'];
+const TABLE_HEADERS = ['No', 'Nama', 'Kamar', 'Judul Buku', 'Penulis', 'Rak', 'Telat (Hari)', 'Denda (Rp)'];
 // Kolom angka (rata kanan di tabel HTML)
-const NUMERIC_COLS = new Set([0, 5, 6]);
+const NUMERIC_COLS = new Set([0, 6, 7]);
 
 function loanToCells(l: Loan, i: number): (string | number)[] {
-  return [i + 1, l.nama, l.kamar, l.judul, l.penulis, l.hariTerlambat, l.denda];
+  return [i + 1, l.nama, l.kamar, l.judul, l.penulis, l.rak, l.hariTerlambat, l.denda];
 }
 
 function escapeHtml(s: string): string {
@@ -339,7 +372,7 @@ async function exportExcel(data: Loan[], scope: Scope): Promise<void> {
 
   const wb = new ExcelJS.Workbook();
   const ws = wb.addWorksheet(scope === 'late' ? 'Terlambat' : 'Semua Peminjam');
-  ws.columns = [5, 26, 10, 40, 26, 13, 13].map((width) => ({ width }));
+  ws.columns = [5, 26, 10, 40, 26, 12, 13, 13].map((width) => ({ width }));
   ws.addRows([TABLE_HEADERS, ...data.map(loanToCells)]);
   ws.getRow(1).font = { bold: true };
   ws.views = [{ state: 'frozen', ySplit: 1 }];
@@ -499,6 +532,8 @@ function usePeminjam() {
           const item = mapRow(row, today);
           if (item) items.push(item);
         }
+        await attachRak(items);
+        if (!mounted.current || id !== reqId.current) return;
 
         fetchedRaw.current = offset + raw.length;
         const totalMatch = isFirst ? count ?? raw.length : undefined;
@@ -878,6 +913,7 @@ function LoanDetailModal({ loan, onClose }: { loan: Loan; onClose: () => void })
 
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
             <DetailItem label="Kode Eksemplar">{loan.kode}</DetailItem>
+            <DetailItem label="Lokasi Rak">{loan.rak}</DetailItem>
             <DetailItem label="Kamar">{loan.kamar}</DetailItem>
             <DetailItem label="Tanggal Pinjam">{dateFormatter.format(loan.tglPinjam)}</DetailItem>
             <DetailItem label="Batas Kembali">{dateFormatter.format(loan.jatuhTempo)}</DetailItem>
@@ -1108,7 +1144,10 @@ function LoanList({
               {/* Buku */}
               <div className="md:col-span-4 flex items-center gap-2 min-w-0">
                 <BookMarked className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                <span className="text-[11px] font-bold text-slate-800 truncate">{loan.judul}</span>
+                <div className="min-w-0">
+                  <span className="text-[11px] font-bold text-slate-800 truncate block">{loan.judul}</span>
+                  <span className="text-[11px] text-slate-500 font-medium truncate block">Rak {loan.rak}</span>
+                </div>
               </div>
 
               {/* Status */}
