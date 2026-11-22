@@ -13,6 +13,7 @@ import Link from 'next/link';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { getNavigationGroups, type MenuItem } from './navigation';
+import { usePustakawanAktif } from './pustakawan-aktif';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import {
@@ -106,6 +107,7 @@ const MenuLink = memo(function MenuLink({
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { aktif, ganti, akses } = usePustakawanAktif();
 
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -136,9 +138,11 @@ export default function Sidebar() {
   const thumbDragging = useRef(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Menu kini statis (dari @/lib/navigation), jadi cukup menunggu autentikasi.
-  // Nanti bisa difilter per peran: getNavigationGroups(role)
-  const navigationGroups = useMemo(() => getNavigationGroups(), []);
+  // Menu statis (dari ./navigation), difilter sesuai akses akun yang diatur super admin
+  const navigationGroups = useMemo(
+    () => getNavigationGroups(akses ?? { superAdmin: false, menuIds: [] }),
+    [akses]
+  );
 
   const ready = !authLoading && !!user;
 
@@ -675,7 +679,7 @@ export default function Sidebar() {
         <div className="p-3 shrink-0">
           <div
             className={`bg-white border border-blue-100 rounded-2xl flex flex-col justify-between overflow-hidden transition-all duration-200 w-full ${
-              profileOpen ? 'h-32 p-2 space-y-2' : 'h-14 p-1.5'
+              profileOpen ? (akses?.lama ? 'h-48' : 'h-36') + ' p-2 space-y-2' : 'h-16 p-1.5'
             }`}
           >
             <div
@@ -689,7 +693,7 @@ export default function Sidebar() {
                   setProfileOpen((prev) => !prev);
                 }
               }}
-              className="relative flex items-center gap-3 h-11 w-full px-2 rounded-xl cursor-pointer hover:bg-blue-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              className="relative flex items-center gap-3 h-13 w-full px-2 rounded-xl cursor-pointer hover:bg-blue-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             >
               <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-[11px] font-black text-white uppercase shrink-0">
                 {email.substring(0, 2)}
@@ -699,9 +703,20 @@ export default function Sidebar() {
                 <span className="text-[11px] font-bold text-slate-800 leading-tight truncate">
                   @{email.split('@')[0]}
                 </span>
-                <span className="text-[9px] text-blue-600 font-semibold uppercase tracking-wider">
-                  Pustakawan
+                <span className="text-[9px] text-blue-600 font-semibold uppercase tracking-wider truncate">
+                  {aktif?.nama ?? 'Pustakawan'}
                 </span>
+                {akses && (
+                  <span
+                    className={`mt-0.5 self-start px-1.5 text-[9px] leading-4 font-bold uppercase tracking-wider rounded border ${
+                      akses.role === 'super_admin'
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-blue-50 text-blue-700 border-blue-100'
+                    }`}
+                  >
+                    {akses.role === 'super_admin' ? 'Super Admin' : 'Pustakawan'}
+                  </span>
+                )}
               </div>
 
               <FontAwesomeIcon
@@ -713,7 +728,21 @@ export default function Sidebar() {
             </div>
 
             {profileOpen && (
-              <div className="pt-2 border-t border-blue-100">
+              <div className="pt-2 border-t border-blue-100 space-y-2">
+                {/* Hanya akun lama (akun bersama) yang memilih nama; akun individu otomatis */}
+                {akses?.lama && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      ganti();
+                    }}
+                    className="w-full flex items-center justify-center gap-2.5 py-2 px-3 bg-white text-blue-700 rounded-lg text-xs font-bold tracking-wide border border-blue-200 transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  >
+                    <FontAwesomeIcon icon={['fas', 'right-left']} className="w-3.5 h-3.5 shrink-0" />
+                    <span>Ganti Pustakawan</span>
+                  </button>
+                )}
                 {/* Tombol logout: merah & timbul; saat hover/ditekan tampak terpencet */}
                 <button
                   type="button"

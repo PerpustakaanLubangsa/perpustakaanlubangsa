@@ -1,0 +1,229 @@
+Kebijakan RLS (schema public), diambil dari Supabase pada 2026-11-22.
+
+- accounts | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- accounts | RLS AKTIF | Izinkan user membaca data akun mereka sendiri | SELECT | untuk: authenticated
+    USING: (auth.uid() = id)
+- allowed_admins | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- allowed_admins | RLS AKTIF | Allow dev read | SELECT | untuk: public
+    USING: true
+- allowed_admins | RLS AKTIF | Enable read access for all users | SELECT | untuk: public
+    USING: true
+- anggota | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- anggota | RLS AKTIF | Izinkan publik membaca data anggota | SELECT | untuk: anon
+    USING: true
+- anggota | RLS AKTIF | Izinkan publik mengubah poin anggota | UPDATE | untuk: anon
+    USING: true
+    CHECK: true
+- anggota | RLS AKTIF | Kebijakan_Baca_Anggota_Publik | SELECT | untuk: authenticated,anon
+    USING: true
+- anggota | RLS AKTIF | Kebijakan_Update_Anggota_Publik | UPDATE | untuk: authenticated,anon
+    USING: true
+    CHECK: true
+- biblio | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- biblio | RLS AKTIF | Allow public read access | SELECT | untuk: public
+    USING: true
+- biblio | RLS AKTIF | Authenticated can delete biblio | DELETE | untuk: authenticated
+    USING: true
+- biblio | RLS AKTIF | Authenticated can insert biblio | INSERT | untuk: authenticated
+    CHECK: true
+- biblio | RLS AKTIF | Authenticated can select biblio | SELECT | untuk: authenticated
+    USING: true
+- biblio | RLS AKTIF | Authenticated can update biblio | UPDATE | untuk: authenticated
+    USING: true
+    CHECK: true
+- biblio | RLS AKTIF | Enable delete for authenticated users | DELETE | untuk: authenticated
+    USING: true
+- biblio | RLS AKTIF | Enable delete for kustom login | DELETE | untuk: anon
+    USING: true
+- biblio | RLS AKTIF | Enable insert for all users | INSERT | untuk: public
+    CHECK: true
+- biblio | RLS AKTIF | Enable read access for all users | SELECT | untuk: public
+    USING: true
+- biblio | RLS AKTIF | Enable read access for authenticated users | SELECT | untuk: authenticated
+    USING: true
+- biblio | RLS AKTIF | Enable update for anon | UPDATE | untuk: public
+    USING: true
+    CHECK: true
+- biblio | RLS AKTIF | Enable update for authenticated users | UPDATE | untuk: authenticated
+    USING: true
+    CHECK: true
+- biblio | RLS AKTIF | Public Read Biblio | SELECT | untuk: public
+    USING: true
+- biblio | RLS AKTIF | Publik bisa mencari buku | SELECT | untuk: anon
+    USING: true
+- biblio | RLS AKTIF | Publik bisa update buku | UPDATE | untuk: anon
+    USING: true
+    CHECK: true
+- data_pengunjung | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- data_pengunjung | RLS AKTIF | Allow public insert | INSERT | untuk: public
+    CHECK: true
+- data_pengunjung | RLS AKTIF | Enable read access for all users | SELECT | untuk: public
+    USING: true
+- data_pengunjung | RLS AKTIF | Publik bisa input data pengunjung | INSERT | untuk: anon
+    CHECK: true
+- data_pengunjung | RLS AKTIF | Publik bisa melihat data pengunjung | SELECT | untuk: anon
+    USING: true
+- data_rak | RLS AKTIF | data_rak bebas dulu | ALL | untuk: authenticated,anon
+    USING: true
+    CHECK: true
+- eksemplar | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- eksemplar | RLS AKTIF | Allow public read access | SELECT | untuk: public
+    USING: true
+- eksemplar | RLS AKTIF | Authenticated can delete eksemplar | DELETE | untuk: authenticated
+    USING: true
+- eksemplar | RLS AKTIF | Authenticated can insert eksemplar | INSERT | untuk: authenticated
+    CHECK: true
+- eksemplar | RLS AKTIF | Authenticated can select eksemplar | SELECT | untuk: authenticated
+    USING: true
+- eksemplar | RLS AKTIF | Authenticated can update eksemplar | UPDATE | untuk: authenticated
+    USING: true
+    CHECK: true
+- eksemplar | RLS AKTIF | Enable delete for authenticated users | DELETE | untuk: authenticated
+    USING: true
+- eksemplar | RLS AKTIF | Enable delete for kustom login | DELETE | untuk: anon
+    USING: true
+- eksemplar | RLS AKTIF | Enable insert for all users | INSERT | untuk: public
+    CHECK: true
+- eksemplar | RLS AKTIF | Enable read access for all users | SELECT | untuk: public
+    USING: true
+- eksemplar | RLS AKTIF | Enable read access for authenticated users | SELECT | untuk: authenticated
+    USING: true
+- eksemplar | RLS AKTIF | Enable read for eksemplar | SELECT | untuk: public
+    USING: true
+- eksemplar | RLS AKTIF | Enable update for anon | UPDATE | untuk: public
+    USING: true
+    CHECK: true
+- eksemplar | RLS AKTIF | Enable update for authenticated users | UPDATE | untuk: authenticated
+    USING: true
+    CHECK: true
+- eksemplar | RLS AKTIF | Enable update for eksemplar | UPDATE | untuk: public
+    USING: true
+- eksemplar | RLS AKTIF | Izinkan update eksemplar | UPDATE | untuk: public
+    USING: true
+    CHECK: true
+- eksemplar | RLS AKTIF | Public Read Eksemplar | SELECT | untuk: public
+    USING: true
+- eksemplar | RLS AKTIF | Publik bisa melihat eksemplar | SELECT | untuk: anon
+    USING: true
+- feedback | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- feedback | RLS AKTIF | Allow authenticated select | SELECT | untuk: public
+    USING: (auth.role() = 'authenticated'::text)
+- feedback | RLS AKTIF | Allow public insert | INSERT | untuk: public
+    CHECK: true
+- jadwal_detail | RLS AKTIF | Akses Publik | ALL | untuk: anon
+    USING: true
+    CHECK: true
+- jadwal_detail | RLS AKTIF | Akses Publik Full | ALL | untuk: anon
+    USING: true
+    CHECK: true
+- jadwal_detail | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- jadwal_detail | RLS AKTIF | Enable access for all users | ALL | untuk: public
+    USING: true
+    CHECK: true
+- jam_master | RLS AKTIF | Akses Publik | ALL | untuk: anon
+    USING: true
+    CHECK: true
+- jam_master | RLS AKTIF | Akses Publik Full | ALL | untuk: anon
+    USING: true
+    CHECK: true
+- jam_master | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- jam_master | RLS AKTIF | Enable access for all users | ALL | untuk: public
+    USING: true
+    CHECK: true
+- karya | RLS mati | anon baca semua karya | SELECT | untuk: anon
+    USING: true
+- karya | RLS mati | anon hapus karya | DELETE | untuk: anon
+    USING: true
+- karya | RLS mati | anon ubah karya | UPDATE | untuk: anon
+    USING: true
+    CHECK: true
+- kategori | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- kategori | RLS AKTIF | Publik bisa melihat kategori | SELECT | untuk: anon
+    USING: true
+- kategori_poin | RLS AKTIF | kategori_poin dapat dibaca semua | SELECT | untuk: authenticated,anon
+    USING: true
+- kategori_poin | RLS AKTIF | kategori_poin_delete | DELETE | untuk: authenticated
+    USING: true
+- kategori_poin | RLS AKTIF | kategori_poin_insert | INSERT | untuk: authenticated
+    CHECK: true
+- kategori_poin | RLS AKTIF | kategori_poin_select | SELECT | untuk: authenticated
+    USING: true
+- kategori_poin | RLS AKTIF | kategori_poin_update | UPDATE | untuk: authenticated
+    USING: true
+    CHECK: true
+- mutasi_poin | RLS AKTIF | mutasi_poin dapat dibaca semua | SELECT | untuk: authenticated,anon
+    USING: true
+- mutasi_poin | RLS AKTIF | mutasi_poin dapat ditambah | INSERT | untuk: authenticated,anon
+    CHECK: true
+- mutasi_poin | RLS AKTIF | mutasi_poin dapat diubah | UPDATE | untuk: authenticated,anon
+    USING: true
+    CHECK: true
+- navigasi_menu | RLS AKTIF | Memungkinkan user login untuk membaca menu | SELECT | untuk: authenticated
+    USING: (is_active = true)
+- pendaftaran | RLS AKTIF | Allow public insert | INSERT | untuk: anon
+    CHECK: true
+- pendaftaran | RLS AKTIF | Izinkan publik membatalkan pendaftaran | DELETE | untuk: anon
+    USING: true
+- pendaftaran | RLS AKTIF | Izinkan publik mengecek pendaftaran | SELECT | untuk: anon
+    USING: true
+- pendaftaran | RLS AKTIF | Izinkan publik mengirim pendaftaran | INSERT | untuk: anon
+    CHECK: true
+- pendaftaran | RLS AKTIF | Publik dapat membaca data pendaftaran | SELECT | untuk: public
+    USING: true
+- pendaftaran | RLS AKTIF | Publik dapat menambah pendaftaran | INSERT | untuk: public
+    CHECK: true
+- pendaftaran | RLS AKTIF | Publik dapat menghapus pendaftaran | DELETE | untuk: public
+    USING: true
+- petugas_master | RLS AKTIF | Akses Publik | ALL | untuk: anon
+    USING: true
+    CHECK: true
+- petugas_master | RLS AKTIF | Akses Publik Full | ALL | untuk: anon
+    USING: true
+    CHECK: true
+- petugas_master | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- petugas_master | RLS AKTIF | Enable access for all users | ALL | untuk: public
+    USING: true
+    CHECK: true
+- rak | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- rekap_absensi | RLS AKTIF | Akses Publik Absensi | ALL | untuk: anon
+    USING: true
+    CHECK: true
+- rekap_absensi | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- sirkulasi | RLS AKTIF | Allow all operations for public | ALL | untuk: public
+    USING: true
+    CHECK: true
+- sirkulasi | RLS AKTIF | Enable insert for sirkulasi | INSERT | untuk: public
+    CHECK: true
+- sirkulasi | RLS AKTIF | Enable read for sirkulasi | SELECT | untuk: public
+    USING: true
+- sirkulasi | RLS AKTIF | Enable update for sirkulasi | UPDATE | untuk: public
+    USING: true
+- sirkulasi | RLS AKTIF | Izinkan semua akses untuk siapa saja | ALL | untuk: public
+    USING: true
+    CHECK: true
